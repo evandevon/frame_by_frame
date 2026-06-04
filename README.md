@@ -1,8 +1,10 @@
 # frame_by_frame
 **Stop motion animator**
+https://evandevon.github.io/frame_by_frame/
 
-A browser-based stop motion animation tool built for classroom use. No installation required — open the page and start shooting.
-Must be served over HTTPS to work correctly. Open directly from the filesystem (file://) and camera switching and export features will not work. Use GitHub Pages or any web server.
+- A browser-based stop motion animation tool built for classroom use.
+- No installation required — open the page and start shooting.
+- Must be served over HTTPS to work correctly. Open directly from the filesystem (file://) and camera switching and export features will not work. Use GitHub Pages or any web server.
 
 **Features**
 
