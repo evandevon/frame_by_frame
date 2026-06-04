@@ -45,6 +45,7 @@ Use Copy Overlay → Next or Copy Overlay → All to carry overlays across frame
 Camera settings
 
 Use the camera dropdown or the 🔄 Cycle button to switch between connected cameras.
+If the camera has focus control an 'autofocus' tickbox appears. If unticked, a focus slider appears.
 Use the resolution dropdown to change capture quality.
 Use Flip H, Flip V, and Rotate to adjust the camera orientation.
 
