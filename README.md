@@ -7,10 +7,15 @@ Must be served over HTTPS to work correctly. Open directly from the filesystem (
 **Features**
 
 Live camera preview with onion skinning (see the previous frame through your current shot)
+
 Capture frames from any connected webcam or USB camera
+
 Switch between cameras using the Cycle button or the camera dropdown
+
 Adjust resolution (SD / HD / FHD / Native)
+
 Flip and rotate the camera view
+
 Draw on frames with a pen tool (adjustable colour and size)
 Add PNG overlays to frames (logos, props, titles)
 Copy overlays across frames
