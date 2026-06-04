@@ -6,7 +6,7 @@ Must be served over HTTPS to work correctly. Open directly from the filesystem (
 
 **Features**
 
-Live camera preview with onion skinning (see the previous frame through your current shot)
+Live camera preview with onion skinning (see the previous frame through your current shot)/n
 
 Capture frames from any connected webcam or USB camera
 
