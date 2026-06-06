@@ -72,15 +72,17 @@ Getting started**
 
 **Saving your work**
 
-Click Save to download a .fbf project file. This saves all frames and drawings.
-Click Load to reopen a saved project.
+- Click Save to download a .fbf project file. This saves all frames and drawings.
+- Click Load to reopen a saved project.
 
 **Exporting**
 
 **Click Export and choose a format:**
 
 -WebM — good for sharing online
+
 -MP4 — broad compatibility (falls back to WebM if H.264 is unsupported)
+
 -Image Sequence — exports every frame as a JPEG inside a ZIP file, for use in other editing software
 
 
