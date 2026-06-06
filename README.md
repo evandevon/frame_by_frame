@@ -89,7 +89,9 @@ Click Load to reopen a saved project.
 **Recommended setup**
 
 -Browser: Chrome (desktop), served over HTTPS
+
 -Camera: Any USB webcam. Sony cameras with Imaging Edge Webcam installed should also appear as a camera option.
+
 -Deployment: GitHub Pages, or any static web host
 
 
@@ -97,6 +99,9 @@ Click Load to reopen a saved project.
 **Known limitations**
 
 -GIF export is temporarily disabled.
+
 -Camera cycling requires at least two cameras to be connected and recognised by the browser.
+
 -Audio and chromakey not yet implemented
+
 -On managed school devices, camera access may be restricted by IT policy.
