@@ -96,7 +96,7 @@ Click Load to reopen a saved project.
 
 **Known limitations**
 
--Projects can really blow out the ram needed to run, especially with inkings and png overlays. 
 -GIF export is temporarily disabled.
 -Camera cycling requires at least two cameras to be connected and recognised by the browser.
+-Audio and chromakey not yet implemented
 -On managed school devices, camera access may be restricted by IT policy.
