@@ -41,15 +41,20 @@ https://evandevon.github.io/frame_by_frame/
 Getting started**
 
 - Open the app in Chrome (recommended) or another modern browser served over HTTPS.
+  
 - Allow camera access when prompted.
+  
 - Position your subject in front of the camera.
 
 **Capturing frames**
 
 -Click Capture (or press Space) to take a shot.
+
 -The frame appears in the filmstrip at the bottom.
--Adjust the FPS slider to control onion skin and playback speed.
--Toggle Onion to see a ghost of the previous frame over the live view — useful for planning movement between shots.
+
+-Adjust the FPS slider to control onion skin and playback speed
+.
+- Use Onion skinning forward and backward to see a ghost of the previous/latter frame(s) over the preview window — useful for planning movement between shots.
 
 **Reviewing and editing frames**
 
