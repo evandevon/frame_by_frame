@@ -1,0 +1,2706 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Frame by Frame</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500&display=swap');
+  :root {
+    --bg:#111; --surface:#1a1a1a; --surface2:#222; --border:#2e2e2e;
+    --accent:#e8ff47; --accent2:#47c8ff; --danger:#ff4747;
+    --text:#eee; --muted:#666; --thumb-size:90px;
+    --left-w:180px; --right-w:190px;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { background:var(--bg); color:var(--text); font-family:'DM Sans',sans-serif;
+    height:100vh; display:flex; flex-direction:column; overflow:hidden; user-select:none; }
+
+  /* ── Header ── */
+  header { display:flex; align-items:center; justify-content:space-between;
+    padding:0 16px; height:48px; background:var(--surface);
+    border-bottom:1px solid var(--border); flex-shrink:0; }
+  header h1 { font-family:'Space Mono',monospace; font-size:15px; letter-spacing:.05em; color:var(--accent); }
+  .header-actions { display:flex; gap:8px; }
+
+  /* ── Buttons ── */
+  button { font-family:'DM Sans',sans-serif; font-size:13px; border:1px solid var(--border);
+    background:var(--surface2); color:var(--text); padding:6px 12px; border-radius:4px;
+    cursor:pointer; transition:background .15s,border-color .15s; white-space:nowrap; }
+  button:hover { background:#2a2a2a; border-color:#444; }
+  button.primary { background:var(--accent); color:#111; border-color:var(--accent); font-weight:500; }
+  button.primary:hover { background:#d4e83e; }
+  button.danger { color:var(--danger); border-color:#3a1a1a; }
+  button.danger:hover { background:#2a1111; border-color:var(--danger); }
+  button.active { background:var(--accent2); color:#111; border-color:var(--accent2); }
+  button:disabled { opacity:.35; cursor:not-allowed; }
+
+  /* ── Main layout ── */
+  .workspace { display:flex; flex:1; overflow:hidden; }
+
+  /* LEFT PANEL */
+  .left-panel { width:var(--left-w); display:flex; flex-direction:column;
+    background:var(--surface); border-right:1px solid var(--border); flex-shrink:0; overflow-y:auto; }
+
+  /* CAMERA PANEL */
+  .camera-panel { display:flex; flex-direction:column; flex:1; min-width:0; }
+  .camera-wrap { position:relative; flex:1; background:#000; overflow:hidden; }
+
+  #video { position:absolute; inset:0; width:100%; height:100%; object-fit:contain; display:block; }
+  #viewLayer { position:absolute; pointer-events:none; }
+  /* onionCanvas: ghosts drawn here at reduced opacity */
+  #onionCanvas { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; }
+  /* overlayLayer: PNG overlays */
+  #overlayLayer { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; }
+  /* drawCanvas: ink, topmost */
+  #drawCanvas { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; }
+  body.drawMode   #drawCanvas { pointer-events:all; cursor:crosshair; }
+  body.eraserMode #drawCanvas { cursor:cell; }
+
+  /* Camera toolbar */
+  .cam-toolbar { display:flex; align-items:center; gap:8px; padding:8px 12px;
+    background:var(--surface); border-top:1px solid var(--border); flex-wrap:wrap; }
+  .cam-toolbar .spacer { flex:1; }
+  .onion-control { display:flex; align-items:center; gap:6px; font-size:12px; color:var(--muted); }
+  .onion-control input[type=range] { width:70px; accent-color:var(--accent2); }
+  .fps-control { display:flex; align-items:center; gap:6px; font-size:12px; color:var(--muted); }
+  .fps-control input[type=number] { width:44px; background:var(--surface2); border:1px solid var(--border);
+    color:var(--text); padding:4px 6px; border-radius:4px; font-size:13px; text-align:center; }
+
+  /* RIGHT PANEL */
+  .tool-panel { width:var(--right-w); display:flex; flex-direction:column;
+    background:var(--surface); border-left:1px solid var(--border); flex-shrink:0; overflow-y:auto; }
+
+  /* Shared panel section */
+  .tool-section { padding:12px; border-bottom:1px solid var(--border); }
+  .tool-section h3 { font-family:'Space Mono',monospace; font-size:10px; letter-spacing:.1em;
+    text-transform:uppercase; color:var(--muted); margin-bottom:8px; }
+  .tool-section .btn-group { display:flex; flex-direction:column; gap:5px; }
+  .tool-section .btn-row { display:flex; gap:5px; }
+  .tool-section .btn-row button { flex:1; }
+  .playback-row { display:flex; gap:5px; align-items:center; justify-content:center; }
+  .coming-soon { font-size:11px; color:var(--muted); border:1px dashed #333;
+    border-radius:4px; padding:8px; text-align:center; line-height:1.5; }
+
+  /* Capture button — red rectangle */
+  #btnCapture {
+    background:var(--danger); border:2px solid #ff6666; color:#fff;
+    font-family:'Space Mono',monospace; font-size:13px; font-weight:700;
+    padding:8px 18px; border-radius:5px; letter-spacing:.05em;
+    box-shadow:0 0 10px rgba(255,71,71,.35); transition:background .12s,transform .1s;
+    flex-shrink:0;
+  }
+  #btnCapture:hover { background:#e03030; }
+  #btnCapture:active { transform:scale(.97); }
+
+  /* Draw panel rows */
+  .draw-panel-row { display:flex; align-items:center; gap:6px; margin-bottom:4px; }
+  .draw-panel-row label { font-size:11px; color:var(--muted); flex-shrink:0; }
+  .draw-panel-row input[type=color] { width:26px; height:26px; border:none; background:none; cursor:pointer; padding:0; }
+  .draw-panel-row input[type=range] { flex:1; accent-color:var(--accent); min-width:0; }
+
+  /* Add PNG button */
+  #btnAddPng { width:100%; padding:10px; font-size:13px; }
+
+  /* Reorder system */
+  .thumb.reorder-active { outline:2px solid var(--accent2); outline-offset:1px; cursor:grabbing; }
+  .thumb.drop-before { box-shadow:-3px 0 0 0 var(--accent2); }
+  .thumb.drop-after  { box-shadow: 3px 0 0 0 var(--accent2); }
+  @keyframes longpress { from{opacity:0;transform:scale(.6)} to{opacity:1;transform:scale(1)} }
+  .thumb.longpress-pending::after { content:'☰'; position:absolute; inset:0; display:flex;
+    align-items:center; justify-content:center; font-size:22px;
+    background:rgba(0,0,0,.55); color:var(--accent2); animation:longpress .35s ease-out forwards; }
+
+  /* Filmstrip */
+  .filmstrip-panel { height:calc(var(--thumb-size) + 56px); background:var(--surface);
+    border-top:1px solid var(--border); display:flex; flex-direction:column; flex-shrink:0; }
+  .filmstrip-info { display:flex; align-items:center; gap:8px; padding:3px 8px;
+    border-bottom:1px solid var(--border); height:24px; }
+  .filmstrip-info span { font-size:11px; color:var(--muted); font-family:'Space Mono',monospace; }
+  .filmstrip-row { display:flex; align-items:center; flex:1; overflow:hidden; }
+  .fs-skip { flex-shrink:0; width:32px; height:100%; background:var(--surface2); border:none;
+    border-right:1px solid var(--border); cursor:pointer; display:flex; align-items:center;
+    justify-content:center; font-size:16px; color:var(--muted); padding:0; }
+  .fs-skip:last-child { border-right:none; border-left:1px solid var(--border); }
+  .fs-skip:hover { background:#252525; color:var(--text); }
+  .filmstrip-scroll {
+    display:flex; align-items:center; gap:5px; padding:5px 6px 2px;
+    overflow-x:auto; flex:1; cursor:grab;
+    /* Visible scrollbar — thick enough to click easily */
+    scrollbar-width:thin; scrollbar-color:var(--accent2) #1e1e1e;
+  }
+  .filmstrip-scroll::-webkit-scrollbar { height:10px; }
+  .filmstrip-scroll::-webkit-scrollbar-track { background:#1e1e1e; border-top:1px solid var(--border); }
+  .filmstrip-scroll::-webkit-scrollbar-thumb { background:var(--accent2); border-radius:5px; border:2px solid #1e1e1e; }
+  .filmstrip-scroll::-webkit-scrollbar-thumb:hover { background:#6fd8ff; }
+  .filmstrip-scroll::-webkit-scrollbar-thumb:active { background:#fff; }
+  .filmstrip-scroll.grabbing { cursor:grabbing; }
+
+  /* Thumb-live — width set by JS to match camera aspect ratio */
+  .thumb-live { position:relative; flex-shrink:0;
+    height:var(--thumb-size);
+    width:calc(var(--thumb-size) * var(--thumb-ar, 1.778));
+    border-radius:4px; overflow:hidden; border:2px solid var(--danger); cursor:pointer;
+    background:#000; }
+  .thumb-live video { position:absolute; inset:0; width:100%; height:100%; object-fit:contain; }
+  .thumb-live .live-label { position:absolute; bottom:2px; left:3px;
+    font-family:'Space Mono',monospace; font-size:9px; color:#f44; text-shadow:0 1px 2px #000; }
+  .thumb-live.active-view { border-color:var(--accent2); }
+
+  /* Thumb — rectangular, full frame visible */
+  .thumb { position:relative; flex-shrink:0;
+    height:var(--thumb-size);
+    width:calc(var(--thumb-size) * var(--thumb-ar, 1.778));
+    border-radius:4px; overflow:hidden; border:2px solid transparent;
+    cursor:pointer; transition:border-color .1s; background:#000; }
+  .thumb img { width:100%; height:100%; object-fit:contain; display:block; -webkit-user-drag:none; }
+  .thumb.selected   { border-color:var(--accent); }
+  .thumb.active-view { border-color:var(--accent2); }
+  .thumb.dragging   { opacity:.4; }
+  .thumb .thumb-num { position:absolute; bottom:2px; left:3px;
+    font-family:'Space Mono',monospace; font-size:9px;
+    color:rgba(255,255,255,.8); text-shadow:0 1px 2px #000; }
+  .thumb .thumb-check { position:absolute; top:3px; right:3px; width:14px; height:14px;
+    background:var(--accent); border-radius:2px; display:none; align-items:center; justify-content:center; }
+  .thumb.selected .thumb-check { display:flex; }
+  .thumb .thumb-check svg { width:10px; height:10px; }
+
+  /* Status bar */
+  .status-bar { height:24px; display:flex; align-items:center; gap:16px; padding:0 12px;
+    background:#0d0d0d; border-top:1px solid #1e1e1e; font-size:11px; color:var(--muted);
+    font-family:'Space Mono',monospace; flex-shrink:0; }
+  .status-bar span { display:flex; align-items:center; gap:4px; }
+  .dot { width:6px; height:6px; border-radius:50%; background:#333; }
+  .dot.live { background:#f44; animation:pulse 1.2s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+  /* Overlay items */
+  .overlay-item { position:absolute; pointer-events:all; }
+  .overlay-item img { display:block; width:100%; user-select:none; -webkit-user-drag:none; cursor:move; }
+  .ov-resize { position:absolute; bottom:-6px; right:-6px; width:14px; height:14px;
+    background:var(--accent); border-radius:2px; cursor:se-resize; pointer-events:all; z-index:2; }
+  .ov-rotate { position:absolute; top:-24px; left:50%; transform:translateX(-50%);
+    width:16px; height:16px; background:var(--accent2); border-radius:50%;
+    cursor:grab; pointer-events:all; z-index:2; }
+  .ov-rotate:active { cursor:grabbing; }
+  .ov-rotate::after { content:''; position:absolute; left:50%; top:100%; transform:translateX(-50%);
+    width:1px; height:8px; background:var(--accent2); }
+  .ov-delete { position:absolute; top:-24px; right:0; width:20px; height:20px;
+    background:var(--danger); border-radius:3px; cursor:pointer; pointer-events:all; z-index:2;
+    display:none; align-items:center; justify-content:center; font-size:11px; color:#fff; border:none; padding:0; }
+  .ov-copy-next { position:absolute; top:-24px; right:24px; width:20px; height:20px;
+    background:var(--accent2); border-radius:3px; cursor:pointer; pointer-events:all; z-index:2;
+    display:none; align-items:center; justify-content:center; font-size:11px; color:#fff; border:none; padding:0; }
+  .ov-copy-all  { position:absolute; top:-24px; right:48px; width:20px; height:20px;
+    background:var(--accent2); border-radius:3px; cursor:pointer; pointer-events:all; z-index:2;
+    display:none; align-items:center; justify-content:center; font-size:11px; color:#fff; border:none; padding:0; }
+  .overlay-item.active .ov-delete    { display:flex; }
+  .overlay-item.active .ov-copy-next { display:flex; }
+  .overlay-item.active .ov-copy-all  { display:flex; }
+  .overlay-item.active .ov-rotate { background:var(--accent); }
+
+  /* Modal */
+  .modal-bg { display:none; position:fixed; inset:0; background:rgba(0,0,0,.7);
+    z-index:100; align-items:center; justify-content:center; }
+  .modal-bg.open { display:flex; }
+  .modal { background:var(--surface); border:1px solid var(--border);
+    border-radius:8px; padding:20px; width:320px; max-width:90vw; }
+  .modal h2 { font-size:15px; margin-bottom:12px; font-family:'Space Mono',monospace; }
+  .modal .modal-actions { display:flex; gap:8px; justify-content:flex-end; }
+  select { background:var(--surface2); border:1px solid var(--border);
+    color:var(--text); padding:5px 8px; border-radius:4px; font-size:12px; }
+  .fmt-opt { display:flex; flex-direction:column; gap:2px; padding:9px 10px;
+    border:1px solid var(--border); border-radius:5px; cursor:pointer;
+    transition:border-color .12s,background .12s; background:var(--surface2); }
+  .fmt-opt:hover { border-color:#444; background:#252525; }
+  .fmt-opt.selected { border-color:var(--accent); background:#1e2200; }
+  .fmt-icon { font-size:16px; line-height:1; }
+  .fmt-label { font-size:13px; font-weight:500; color:var(--text); }
+  .fmt-sub { font-size:10px; color:var(--muted); line-height:1.3; }
+
+  /* ── Touch targets ── */
+  button { touch-action:manipulation; -webkit-tap-highlight-color:transparent; }
+
+  /* ── Mobile layout ── */
+  @media (max-width:767px){
+    :root { --left-w:100%; --right-w:100%; --thumb-size:64px; }
+
+    header { height:44px; padding:0 10px; }
+    header h1 { font-size:12px; }
+    #projectName { width:130px; font-size:12px; }
+    .header-actions button { padding:5px 8px; font-size:12px; }
+
+    /* Stack workspace vertically */
+    .workspace { flex-direction:column; }
+
+    /* Camera takes up as much vertical space as possible */
+    .camera-panel { flex:1; min-height:0; }
+
+    /* Left and right panels become hidden drawers */
+    .left-panel, .tool-panel {
+      position:fixed; bottom:0; left:0; right:0; z-index:50;
+      width:100% !important; max-height:55vh;
+      border-radius:16px 16px 0 0; border-top:1px solid var(--border);
+      border-right:none; border-left:none;
+      transform:translateY(100%); transition:transform .25s ease;
+      overflow-y:auto; flex-shrink:0;
+    }
+    .left-panel.open, .tool-panel.open { transform:translateY(0); }
+
+    /* Drawer handle */
+    .left-panel::before, .tool-panel::before {
+      content:''; display:block; width:40px; height:4px;
+      background:#444; border-radius:2px; margin:8px auto 4px;
+    }
+
+    /* Mobile tab bar replaces the cam-toolbar arrangement */
+    .cam-toolbar {
+      padding:6px 8px; gap:6px; justify-content:space-between;
+    }
+    .cam-toolbar .onion-control { display:none; }
+    .cam-toolbar .fps-control   { display:none; }
+
+    /* Filmstrip smaller */
+    .filmstrip-panel { height:calc(var(--thumb-size) + 36px); }
+    .filmstrip-info  { height:20px; }
+
+    /* Mobile tab bar */
+    #mobileTabBar {
+      display:flex; background:var(--surface); border-top:1px solid var(--border);
+      flex-shrink:0;
+    }
+    #mobileTabBar button {
+      flex:1; border:none; border-radius:0; padding:8px 4px;
+      font-size:10px; font-family:'Space Mono',monospace; background:transparent;
+      color:var(--muted); display:flex; flex-direction:column; align-items:center; gap:2px;
+      border-right:1px solid var(--border);
+    }
+    #mobileTabBar button:last-child { border-right:none; }
+    #mobileTabBar button .tab-icon { font-size:18px; line-height:1; }
+    #mobileTabBar button.tab-active { color:var(--accent2); }
+
+    /* Bigger touch targets for key buttons */
+    #btnCapture { padding:12px 24px; font-size:15px; }
+    .ov-rotate  { width:24px; height:24px; top:-30px; }
+    .ov-rotate::after { height:10px; }
+    .ov-resize  { width:20px; height:20px; bottom:-8px; right:-8px; }
+    .ov-delete  { width:28px; height:28px; font-size:14px; }
+    .ov-copy-next { width:28px; height:28px; font-size:14px; right:32px; }
+    .ov-copy-all  { width:28px; height:28px; font-size:14px; right:64px; }
+
+    /* Hide desktop-only status bar items */
+    #statusMode, #statusDuration { display:none; }
+  }
+
+  @media (min-width:768px){
+    #mobileTabBar { display:none; }
+  }
+
+</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+</head>
+<body>
+
+<header>
+  <h1>⬛ FRAME BY FRAME</h1>
+  <input id="projectName" type="text" value="Untitled Project"
+    style="background:transparent;border:none;border-bottom:1px solid #444;color:var(--accent);
+    font-family:'Space Mono',monospace;font-size:14px;width:220px;text-align:center;
+    padding:2px 6px;outline:none;cursor:text;"
+    title="Click to rename project">
+  <div class="header-actions">
+    <button id="btnSaveProject">💾 Save Project</button>
+    <button id="btnLoadProject">📂 Load Project</button>
+    <input type="file" id="loadInput" accept=".smz,.fbf" style="display:none">
+    <button id="btnExport" class="primary">▶ Export</button>
+  </div>
+</header>
+
+<div class="workspace">
+
+  <!-- LEFT PANEL: drawing + PNG + effects -->
+  <div class="left-panel">
+    <div class="tool-section">
+      <h3>Draw</h3>
+      <div class="btn-group">
+        <div class="btn-row">
+          <button id="btnDrawPen">✏️ Pen</button>
+          <button id="btnDrawEraser">◻ Eraser</button>
+        </div>
+        <div class="draw-panel-row">
+          <label>Col</label>
+          <input type="color" id="brushColor" value="#ff4747">
+          <label>Sz</label>
+          <input type="range" id="brushSize" min="2" max="60" value="8">
+        </div>
+        <div class="btn-row">
+          <button id="btnUndoDraw">↩ Undo</button>
+          <button id="btnClearDraw" class="danger">Clear</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="tool-section">
+      <h3>Overlay</h3>
+      <div class="btn-group">
+        <button id="btnAddPng">🖼 Add PNG</button>
+        <input type="file" id="pngOverlayInput" accept=".png,image/png" style="display:none">
+        <button id="btnCopyOverlayNext" disabled title="Copy all overlays to next frame">→ Copy all to Next</button>
+        <button id="btnCopyOverlayAll"  disabled title="Copy all overlays to all frames">⇥ Copy all to All</button>
+      </div>
+    </div>
+
+    <div class="tool-section">
+      <h3>Sound</h3>
+      <div class="coming-soon">🔊 Audio track<br>coming soon</div>
+    </div>
+
+    <div class="tool-section">
+      <h3>Chroma Key</h3>
+      <div class="coming-soon">🟢 Auto greenscreen<br>coming soon</div>
+      <div style="height:6px"></div>
+      <div class="coming-soon">🖌 Manual erase/<br>repaint tool<br>coming soon</div>
+    </div>
+  </div>
+
+  <!-- CAMERA PANEL -->
+  <div class="camera-panel">
+    <div class="camera-wrap" id="cameraWrap">
+      <video id="video" autoplay playsinline muted></video>
+      <div id="viewLayer">
+        <img id="frameImg" draggable="false"
+          style="position:absolute;inset:0;width:100%;height:100%;display:none;pointer-events:none;">
+        <canvas id="onionCanvas"></canvas>
+        <div id="overlayLayer"></div>
+        <canvas id="drawCanvas"></canvas>
+      </div>
+    </div>
+
+    <div class="cam-toolbar">
+      <!-- Capture + Playback row -->
+      <button id="btnCapture" title="Capture frame (C)">⬤ CAPTURE</button>
+      <button id="btnFirst" title="First frame">⏮</button>
+      <button id="btnPlay" title="Play/Pause">▶</button>
+      <button id="btnLast" title="Last frame / Live">⏭</button>
+      <div class="spacer"></div>
+      <div class="onion-control">
+        <span>Onion</span>
+        <input type="range" id="onionOpacity" min="0" max="100" value="40">
+        <span id="onionVal">40%</span>
+        <select id="onionFrames">
+          <option value="0">0 back</option>
+          <option value="1" selected>1 back</option>
+          <option value="2">2 back</option>
+          <option value="3">3 back</option>
+        </select>
+        <select id="onionForward">
+          <option value="0" selected>0 fwd</option>
+          <option value="1">1 fwd</option>
+          <option value="2">2 fwd</option>
+          <option value="3">3 fwd</option>
+        </select>
+      </div>
+      <div class="fps-control">
+        <span>FPS</span>
+        <input type="number" id="fpsInput" value="12" min="1" max="60">
+      </div>
+    </div>
+  </div>
+
+  <!-- RIGHT PANEL: frame editing + camera -->
+  <div class="tool-panel">
+    <div class="tool-section">
+      <h3>Selection</h3>
+      <div class="btn-group">
+        <button id="btnSelectAll">Select All</button>
+        <button id="btnSelectNone">Deselect</button>
+      </div>
+    </div>
+
+    <div class="tool-section">
+      <h3>Edit Frames</h3>
+      <div class="btn-group">
+        <button id="btnReverse">↔ Reverse</button>
+        <button id="btnDuplicate">⧉ Duplicate</button>
+        <button id="btnDelete" class="danger">🗑 Delete</button>
+      </div>
+    </div>
+
+    <div class="tool-section">
+      <h3 style="display:flex;align-items:center;justify-content:space-between;">
+        Camera
+        <button id="btnFacingMode" title="Switch to next camera" style="font-size:13px;padding:2px 7px;margin:0;">🔄 Cycle</button>
+      </h3>
+      <div class="btn-group">
+        <select id="cameraSelect" style="width:100%;font-size:12px;padding:5px;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:4px"></select>
+        <select id="resSelect" style="width:100%;font-size:12px;padding:5px;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:4px" title="Requested resolution (camera may not support all)">
+          <option value="sd">SD — 640×480</option>
+          <option value="hd" selected>HD — 1280×720</option>
+          <option value="fhd">Full HD — 1920×1080</option>
+          <option value="native">Native (camera default)</option>
+        </select>
+        <div id="actualResDisplay" style="font-size:11px;color:var(--muted);text-align:center;padding:2px 0;">
+          Actual: <span id="actualRes">–</span>
+        </div>
+        <div class="btn-row">
+          <button id="btnFlipH">↔ H</button>
+          <button id="btnFlipV">↕ V</button>
+          <button id="btnRotateCam">↻ 90°</button>
+        </div>
+        <!-- Focus controls — shown/hidden based on camera capability -->
+        <div id="focusControls" style="display:none;flex-direction:column;gap:5px;">
+          <div style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);">
+            <label for="chkAutoFocus">Auto Focus</label>
+            <input type="checkbox" id="chkAutoFocus" checked style="accent-color:var(--accent2);">
+          </div>
+          <div id="focusSliderRow" style="display:none;align-items:center;gap:6px;font-size:11px;color:var(--muted);">
+            <label>Focus</label>
+            <input type="range" id="focusSlider" min="0" max="1" step="0.01" value="0.5"
+              style="flex:1;accent-color:var(--accent);">
+          </div>
+        </div>
+        <button id="btnRefocusFallback" style="display:none;">⟳ Refocus</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- Mobile tab bar -->
+<div id="mobileTabBar">
+  <button id="tabTools" onclick="toggleDrawer('left')">
+    <span class="tab-icon">✏️</span>Tools
+  </button>
+  <button id="tabFrames" onclick="toggleDrawer('right')">
+    <span class="tab-icon">🎬</span>Frames
+  </button>
+  <button id="tabOnion">
+    <span class="tab-icon">👁</span>Onion
+  </button>
+  <button id="tabSettings">
+    <span class="tab-icon">⚙️</span>Settings
+  </button>
+</div>
+
+<!-- FILMSTRIP -->
+<div class="filmstrip-panel">
+  <div class="filmstrip-info">
+    <span id="frameCount">0 frames</span>
+    <span id="selCount"></span>
+    <div style="flex:1"></div>
+    <span style="color:#333">hold to reorder · click to view · drag to scroll</span>
+  </div>
+  <div class="filmstrip-row">
+    <button class="fs-skip" id="btnSkipFirst">⏮</button>
+    <div class="filmstrip-scroll" id="filmstrip"></div>
+    <button class="fs-skip" id="btnSkipLast">⏭</button>
+  </div>
+</div>
+
+<div class="status-bar">
+  <span><div class="dot live" id="liveDot"></div><span id="camStatus">Camera</span></span>
+  <span id="statusFrame">Frame –</span>
+  <span id="statusDuration">0.0s</span>
+  <span id="statusMode">● Live</span>
+  <div style="flex:1"></div>
+  <span id="memWarning" style="color:var(--danger);display:none">⚠ Memory high</span>
+  <span id="memEstimate" style="color:var(--accent);cursor:pointer;text-decoration:underline dotted;padding:2px 4px;border-radius:3px;" title="Click for memory breakdown" onclick="toggleMemDiag()">0 MB 🔍</span>
+</div>
+<div id="memDiag" style="display:none;position:fixed;bottom:48px;right:8px;background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:10px 14px;font-size:11px;font-family:monospace;z-index:9999;min-width:280px;max-width:360px;box-shadow:0 4px 16px rgba(0,0,0,0.4);">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+    <strong>Memory Breakdown</strong>
+    <button onclick="toggleMemDiag()" style="background:none;border:none;color:var(--fg);cursor:pointer;font-size:14px;">✕</button>
+  </div>
+  <div id="memDiagContent">Loading…</div>
+  <div style="margin-top:8px;border-top:1px solid #333;padding-top:6px;">
+    <div style="font-size:10px;color:#666;margin-bottom:3px;">JS heap over time (2s intervals) — flat = stable, rising = leak</div>
+    <canvas id="memSparkline" width="310" height="48" style="width:100%;height:48px;display:block;background:#111;border-radius:3px;"></canvas>
+    <div style="display:flex;justify-content:space-between;font-size:10px;color:#555;margin-top:2px;">
+      <span id="memSparkMin">—</span><span>JS heap</span><span id="memSparkMax">—</span>
+    </div>
+  </div>
+  <div style="margin-top:4px;color:#555;font-size:10px;">performance.memory = Chrome only · est. total includes fixed renderer overhead (~50-80MB)</div>
+</div>
+
+<!-- Save progress banner — appears at top of screen during project save -->
+<div id="saveProgressBanner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:10000;background:var(--bg2);border-bottom:1px solid var(--border);padding:6px 12px;box-shadow:0 2px 8px rgba(0,0,0,0.4);">
+  <div style="display:flex;justify-content:space-between;align-items:center;font-size:12px;margin-bottom:4px;">
+    <span id="saveProgressText">Saving…</span>
+    <span id="saveProgressPct">0%</span>
+  </div>
+  <div style="height:4px;background:#2a2a2a;border-radius:2px;overflow:hidden;">
+    <div id="saveProgressBar" style="height:100%;width:0%;background:var(--accent);border-radius:2px;transition:width .1s;"></div>
+  </div>
+</div>
+
+
+<div class="modal-bg" id="exportModal">
+  <div class="modal">
+    <h2>Export</h2>
+    <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:14px;">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
+        <label class="fmt-opt selected" data-fmt="webm"><input type="radio" name="fmt" value="webm" checked style="display:none">
+          <span class="fmt-icon">▶</span><span class="fmt-label">WebM</span><span class="fmt-sub">Best quality</span></label>
+        <label class="fmt-opt" data-fmt="gif" style="opacity:0.4;pointer-events:none;cursor:not-allowed;" title="GIF export temporarily unavailable"><input type="radio" name="fmt" value="gif" style="display:none" disabled>
+          <span class="fmt-icon">🎞</span><span class="fmt-label">GIF</span><span class="fmt-sub">Unavailable</span></label>
+        <label class="fmt-opt" data-fmt="mp4"><input type="radio" name="fmt" value="mp4" style="display:none">
+          <span class="fmt-icon">🎬</span><span class="fmt-label">MP4</span><span class="fmt-sub">Wide compat</span></label>
+        <label class="fmt-opt" data-fmt="zip"><input type="radio" name="fmt" value="zip" style="display:none">
+          <span class="fmt-icon">🗂</span><span class="fmt-label">Image Seq</span><span class="fmt-sub">ZIP of JPEGs</span></label>
+      </div>
+      <div id="iosWarning" style="display:none;font-size:11px;color:#f90;background:#1a1400;border:1px solid #3a2e00;border-radius:4px;padding:7px 9px;line-height:1.5;margin-bottom:6px;">⚠ iOS Safari does not support WebM or MP4 export. Use GIF or Image Sequence instead.</div>
+      <div id="mp4Warning" style="display:none;font-size:11px;color:#f90;background:#1a1400;border:1px solid #3a2e00;border-radius:4px;padding:7px 9px">
+        ⚠ May fall back to .webm if H.264 unsupported.</div>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <span style="font-size:12px;color:var(--muted)">FPS</span>
+        <input type="number" id="exportFps" min="1" max="60" value="12"
+          style="width:50px;background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:5px 7px;border-radius:4px;font-size:13px;text-align:center;">
+        <span style="font-size:11px;color:var(--muted)" id="exportDuration"></span>
+      </div>
+    </div>
+    <div id="exportProgressWrap" style="display:none;margin-bottom:12px;">
+      <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-bottom:5px;">
+        <span id="exportStatusText">Building…</span><span id="exportPct">0%</span></div>
+      <div style="height:6px;background:#2a2a2a;border-radius:3px;overflow:hidden;">
+        <div id="exportProgressBar" style="height:100%;width:0%;background:var(--accent);border-radius:3px;transition:width .15s;"></div></div>
+    </div>
+    <div class="modal-actions">
+      <button id="btnExportCancel">Cancel</button>
+      <button id="btnExportGo" class="primary">Export</button>
+    </div>
+  </div>
+</div>
+
+<canvas id="captureCanvas" style="display:none"></canvas>
+
+<!-- Inline GIF worker — fixed NeuQuant colormap(), no transfer bugs -->
+<script id="gifWorkerSrc" type="text/js-worker">
+'use strict';
+// NeuQuant: neural-net colour quantiser. Expects RGB (stride 3) pixel array.
+// Fixed: colormap() now reads network directly after inxbuild() sorts it in-place by green.
+var NeuQuant=function(pixels,maxColors){
+  var netsize=maxColors;
+  var prime1=499,prime2=491,prime3=487,prime4=503;
+  var minpicturebytes=3*prime4;
+  var netbiasshift=4,ncycles=100;
+  var intbiasshift=16,intbias=1<<intbiasshift;
+  var gammashift=10;
+  var betashift=10,beta=intbias>>betashift,betagamma=intbias<<(gammashift-betashift);
+  var initrad=netsize>>3,radiusbiasshift=6,radiusbias=1<<radiusbiasshift;
+  var initradius=initrad*radiusbias,radiusdec=30;
+  var alphabiasshift=10,initalpha=1<<alphabiasshift;
+  var radbiasshift=8,radbias=1<<radbiasshift;
+  var alpharadbias=1<<(alphabiasshift+radbiasshift);
+  // network[i] = [b, g, r] as floats
+  var network=new Array(netsize);
+  var netindex=new Array(256);
+  var bias=new Array(netsize).fill(0);
+  var freq=new Array(netsize);
+  var radpower=[];
+  for(var i=0;i<netsize;i++){
+    var v=(i<<(netbiasshift+8))/netsize;
+    network[i]=[v,v,v];
+    freq[i]=intbias/netsize;
+  }
+  function altersingle(alpha,i,b,g,r){
+    network[i][0]-=alpha*(network[i][0]-b)/initalpha;
+    network[i][1]-=alpha*(network[i][1]-g)/initalpha;
+    network[i][2]-=alpha*(network[i][2]-r)/initalpha;
+  }
+  function alterneigh(rad,i,b,g,r){
+    var lo=Math.abs(i-rad),hi=Math.min(i+rad,netsize);
+    var j=i+1,k=i-1,m=1;
+    while(j<hi||k>lo){
+      var a=radpower[m++];
+      if(j<hi){network[j][0]-=a*(network[j][0]-b)/alpharadbias;network[j][1]-=a*(network[j][1]-g)/alpharadbias;network[j][2]-=a*(network[j][2]-r)/alpharadbias;j++;}
+      if(k>lo){network[k][0]-=a*(network[k][0]-b)/alpharadbias;network[k][1]-=a*(network[k][1]-g)/alpharadbias;network[k][2]-=a*(network[k][2]-r)/alpharadbias;k--;}
+    }
+  }
+  function contest(b,g,r){
+    var bestd=0x7fffffff,bestbiasd=0x7fffffff,bestpos=0,bestbiaspos=0;
+    for(var i=0;i<netsize;i++){
+      var n=network[i];
+      var dist=Math.abs(n[0]-b)+Math.abs(n[1]-g)+Math.abs(n[2]-r);
+      if(dist<bestd){bestd=dist;bestpos=i;}
+      var biasdist=dist-(bias[i]>>(intbiasshift-netbiasshift));
+      if(biasdist<bestbiasd){bestbiasd=biasdist;bestbiaspos=i;}
+      freq[i]-=freq[i]>>betashift;
+      bias[i]+=(freq[i]<<(gammashift-betashift));
+    }
+    freq[bestpos]+=beta;bias[bestpos]-=betagamma;
+    return bestbiaspos;
+  }
+  function learn(){
+    var lc=pixels.length,alphadec=30+(maxColors-1)/3|0;
+    var samplepixels=lc/3|0,delta=samplepixels/ncycles|0;
+    var alpha=initalpha,radius=initradius,rad=radius>>radiusbiasshift;
+    if(rad<=1)rad=0;
+    for(var i=0;i<rad;i++)radpower[i]=alpha*(((rad*rad-i*i)*radbias)/(rad*rad));
+    var step=lc<minpicturebytes?3:lc%prime1?3*prime1:lc%prime2?3*prime2:lc%prime3?3*prime3:3*prime4;
+    var pix=0;
+    for(i=0;i<samplepixels;){
+      var b=pixels[pix]&255,g=pixels[pix+1]&255,r=pixels[pix+2]&255;
+      var j=contest(b,g,r);
+      altersingle(alpha,j,b,g,r);
+      if(rad)alterneigh(rad,j,b,g,r);
+      pix+=step;if(pix>=lc)pix-=lc;
+      i++;if(delta&&i%delta===0){alpha-=alpha/alphadec;radius-=radius/radiusdec;rad=radius>>radiusbiasshift;if(rad<=1)rad=0;for(j=0;j<rad;j++)radpower[j]=alpha*(((rad*rad-j*j)*radbias)/(rad*rad));}
+    }
+  }
+  function inxbuild(){
+    // Sort network in-place by green channel ascending
+    network.sort(function(a,b){return a[1]-b[1];});
+    // Build netindex: for each green value, the first neuron index with that green
+    var prev=0,start=0;
+    for(var i=0;i<netsize;i++){
+      var g=Math.round(network[i][1]);
+      if(g!==prev){netindex[prev]=(start+i)>>1;for(var j=prev+1;j<g;j++)netindex[j]=i;prev=g;start=i;}
+    }
+    netindex[prev]=(start+netsize-1)>>1;
+    for(var j=prev+1;j<256;j++)netindex[j]=netsize-1;
+  }
+  function map(b,g,r){
+    var bestd=1000,best=0,i=netindex[g&255]-1,j=i+1;  // best=0 not -1 as safe fallback
+    while(i>=0||j<netsize){
+      if(j<netsize){var p=network[j];var d=p[1]-g;if(d>=bestd)j=netsize;else{j++;d=Math.abs(d)+Math.abs(p[0]-b);if(d<bestd){d+=Math.abs(p[2]-r);if(d<bestd){bestd=d;best=j-1;}}}}
+      if(i>=0){var p=network[i];var d=g-p[1];if(d>=bestd)i=-1;else{i--;d=Math.abs(d)+Math.abs(p[0]-b);if(d<bestd){d+=Math.abs(p[2]-r);if(d<bestd){bestd=d;best=i+1;}}}}
+    }
+    return best<0?0:best;  // never return -1
+  }
+  learn();inxbuild();
+  this.map=map;
+  // colormap: return flat [r0,g0,b0, r1,g1,b1, ...] matching input channel order
+  this.colormap=function(){
+    var out=new Array(netsize*3);
+    for(var i=0;i<netsize;i++){out[i*3]=Math.round(network[i][0]);out[i*3+1]=Math.round(network[i][1]);out[i*3+2]=Math.round(network[i][2]);}
+    return out;
+  };
+};
+
+var GifWriter=function(buf){
+  this.addFrame=function(x,y,w,h,indexed,delay){
+    buf.push(0x21,0xf9,0x04,0,delay&0xff,delay>>8&0xff,0,0);
+    buf.push(0x2c,x&0xff,x>>8&0xff,y&0xff,y>>8&0xff,w&0xff,w>>8&0xff,h&0xff,h>>8&0xff,0);
+    var minCode=8;buf.push(minCode);
+    var enc=lzw(minCode,indexed);
+    for(var i=0;i<enc.length;){var n=Math.min(enc.length-i,255);buf.push(n);for(var j=0;j<n;j++)buf.push(enc[i++]);}
+    buf.push(0);
+  };
+  // Fast LZW using a flat Uint32Array hash table instead of object/Map.
+  // Key insight: dictionary entries are (prefix_code << 8 | pixel) → new_code.
+  // We use open addressing with a 16384-slot table (enough for 12-bit LZW).
+  function lzw(minCode,data){
+    var cc=1<<minCode,eoi=cc+1,bits=minCode+1,nextCode=eoi+1;
+    var TABLE_SIZE=65536; // power of 2, > max dict size 4096
+    var keys=new Int32Array(TABLE_SIZE).fill(-1);
+    var vals=new Uint16Array(TABLE_SIZE);
+    var out=[],bitBuf=0,bitCount=0;
+
+    function emit(code){
+      bitBuf|=code<<bitCount;bitCount+=bits;
+      while(bitCount>=8){out.push(bitBuf&255);bitBuf>>=8;bitCount-=8;}
+    }
+    function clearTable(){
+      keys.fill(-1);nextCode=eoi+1;bits=minCode+1;emit(cc);
+    }
+    function hash(prefix,pixel){
+      // Cantor-pair style hash, mod table size
+      return ((prefix<<8|pixel)*2654435761)>>>0&(TABLE_SIZE-1);
+    }
+    function lookup(prefix,pixel){
+      var key=(prefix<<8)|pixel,h=hash(prefix,pixel);
+      while(keys[h]!==-1){if(keys[h]===key)return vals[h];h=(h+1)&(TABLE_SIZE-1);}
+      return -1;
+    }
+    function insert(prefix,pixel,code){
+      var key=(prefix<<8)|pixel,h=hash(prefix,pixel);
+      while(keys[h]!==-1)h=(h+1)&(TABLE_SIZE-1);
+      keys[h]=key;vals[h]=code;
+    }
+
+    clearTable();
+    var prefix=data[0];
+    for(var i=1;i<data.length;i++){
+      var pixel=data[i];
+      var found=lookup(prefix,pixel);
+      if(found!==-1){
+        prefix=found;
+      } else {
+        emit(prefix);
+        if(nextCode<4096){
+          insert(prefix,pixel,nextCode++);
+          if(nextCode===(1<<bits)&&bits<12)bits++;
+        } else {
+          clearTable();
+        }
+        prefix=pixel;
+      }
+    }
+    emit(prefix);emit(eoi);
+    while(bitCount>0){out.push(bitBuf&255);bitBuf>>=8;bitCount-=8;}
+    return out;
+  }
+};
+
+self.onmessage=function(e){
+  var d=e.data,W=d.width,H=d.height,frames=d.frames,delay=d.delay;
+  // GIF header
+  var buf=[0x47,0x49,0x46,0x38,0x39,0x61];
+  buf.push(W&0xff,W>>8,H&0xff,H>>8,0xf7,0,0);
+  // Build global palette from first frame
+  var nq=new NeuQuant(frames[0],256);
+  var cmap=nq.colormap(); // 768 values: r0,g0,b0, r1,g1,b1, ...
+  for(var i=0;i<256;i++) buf.push(cmap[i*3],cmap[i*3+1],cmap[i*3+2]);
+  // Loop forever block
+  buf.push(0x21,0xff,0x0b);
+  for(var c of'NETSCAPE2.0')buf.push(c.charCodeAt(0));
+  buf.push(3,1,0,0,0);
+  // Frames
+  for(var fi=0;fi<frames.length;fi++){
+    var rgb=frames[fi],indexed=new Uint8Array(W*H);
+    for(var p=0;p<W*H;p++)indexed[p]=nq.map(rgb[p*3],rgb[p*3+1],rgb[p*3+2]);
+    new GifWriter(buf).addFrame(0,0,W,H,indexed,delay);
+    self.postMessage({type:'progress',value:(fi+1)/frames.length});
+  }
+  buf.push(0x3b);
+  self.postMessage({type:'done',blob:new Blob([new Uint8Array(buf)],{type:'image/gif'})});
+};
+</script>
+
+<!-- Make NeuQuant and GifWriter available on the main thread for inline GIF encoding.
+     The worker script tag above uses type="text/js-worker" so the browser doesn't
+     execute it — we extract and eval just the library portion here. -->
+<script>
+(function(){
+  const src = document.getElementById('gifWorkerSrc').textContent;
+  const libEnd = src.indexOf('self.onmessage');
+  // eval into window scope so exportGIF() can reference NeuQuant and GifWriter
+  // eslint-disable-next-line no-eval
+  (0, eval)(src.slice(0, libEnd));
+})();
+</script>
+
+<script>
+// ══════════════════════════════════════════════════
+//  STATE
+//  frame: { dataURL, baseDataURL, drawingDataURL, overlays:[{src,x,y,w,rot}] }
+//  dataURL      = fully composited (photo+ink+overlays baked) — used for thumbnails, onion, export
+//  baseDataURL  = original clean capture — shown on frameImg so user edits over clean photo
+//  drawingDataURL = ink added in review mode (separate editable layer on drawCanvas)
+//  overlays     = PNGs added in review mode (DOM overlays, editable)
+// ══════════════════════════════════════════════════
+const state = {
+  frames:[], selected:new Set(), playhead:-1,
+  playing:false, playInterval:null,
+  dirtyFrame:false,  // true when current frame has unsaved ink or overlay changes
+  flipH:false, flipV:false, camRotation:0,
+  drawMode:false, drawHistory:[],
+};
+
+const video        = document.getElementById('video');
+const viewLayer    = document.getElementById('viewLayer');
+const onionCanvas  = document.getElementById('onionCanvas');
+const frameImg     = document.getElementById('frameImg');
+const drawCanvas   = document.getElementById('drawCanvas');
+const overlayLayer = document.getElementById('overlayLayer');
+const capCanvas    = document.getElementById('captureCanvas');
+const filmstrip    = document.getElementById('filmstrip');
+const onionCtx     = onionCanvas.getContext('2d');
+const drawCtx      = drawCanvas.getContext('2d');
+const capCtx       = capCanvas.getContext('2d');
+
+// ── Helpers ───────────────────────────────────────
+function loadImage(src){
+  return new Promise((res,rej)=>{
+    const i=new Image();
+    i.onload=()=>res(i);
+    i.onerror=rej;
+    i.src=src;
+  });
+}
+// Returns the best available dataURL for a frame — the composited version if it exists,
+// otherwise the clean base photo. Avoids storing the same image twice at capture time.
+function effectiveURL(f){ return f.dataURL || f.baseDataURL; }
+
+// Generate a small thumbnail dataURL from a canvas or image.
+// Stored separately from the full-res dataURL so filmstrip <img> tags
+// don't force the browser to decode and cache a full FHD bitmap per frame.
+const THUMB_H = 90; // matches --thumb-size CSS variable
+function makeThumbnail(source){
+  const aspect = source.naturalWidth
+    ? source.naturalWidth / source.naturalHeight
+    : source.width / source.height;
+  const tw = Math.round(THUMB_H * aspect);
+  const tc = document.createElement('canvas');
+  tc.width = tw; tc.height = THUMB_H;
+  tc.getContext('2d').drawImage(source, 0, 0, tw, THUMB_H);
+  return tc.toDataURL('image/jpeg', 0.75);
+}
+
+// ── Overlay asset store ───────────────────────────────────────────────────────
+// Stores PNG data URLs once and references them by short ID.
+// Frames store {assetId, x, y, w, rot} instead of the full data URL,
+// so the same PNG added to 50 frames is only stored once.
+const overlayAssets = {}; // { id: dataURL }
+let _assetCounter = 0;
+function registerAsset(dataURL){
+  // Return existing ID if this exact data URL is already registered
+  for(const [id, url] of Object.entries(overlayAssets)){
+    if(url === dataURL) return id;
+  }
+  const id = 'oa' + (++_assetCounter);
+  overlayAssets[id] = dataURL;
+  return id;
+}
+function resolveAsset(idOrURL){
+  // Accepts either a registered ID or a raw data URL (for backwards compatibility)
+  return overlayAssets[idOrURL] || idOrURL;
+}
+
+function saveInk(){
+  // WebP at 0.7: ink strokes are simple shapes — compression artefacts are invisible
+  // and transparency is preserved. ~80% smaller than PNG, ~40% smaller than WebP 0.9.
+  // Falls back to PNG on browsers that don't support WebP toDataURL (rare).
+  const data=drawCanvas.toDataURL('image/webp',0.7);
+  return data;
+}
+function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
+function triggerDownload(blob,name){
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href),10000);
+}
+
+// ══════════════════════════════════════════════════
+//  FIT VIEW LAYER
+// ══════════════════════════════════════════════════
+function fitViewLayer(){
+  const wrap=document.getElementById('cameraWrap');
+  const ww=wrap.clientWidth,wh=wrap.clientHeight;
+  const vw=video.videoWidth||ww,vh=video.videoHeight||wh;
+  const scale=Math.min(ww/vw,wh/vh);
+  const rw=vw*scale,rh=vh*scale;
+  viewLayer.style.left=((ww-rw)/2)+'px';
+  viewLayer.style.top=((wh-rh)/2)+'px';
+  viewLayer.style.width=rw+'px';
+  viewLayer.style.height=rh+'px';
+  [onionCanvas,drawCanvas].forEach(c=>{
+    if(c.width!==vw||c.height!==vh){c.width=vw;c.height=vh;}
+    c.style.width='100%';c.style.height='100%';
+  });
+  // Update filmstrip thumb aspect ratio
+  if(vw && vh){
+    document.documentElement.style.setProperty('--thumb-ar', (vw/vh).toFixed(4));
+  }
+}
+video.addEventListener('loadedmetadata',fitViewLayer);
+window.addEventListener('resize',()=>{fitViewLayer();redrawAllOverlays();});
+
+// ══════════════════════════════════════════════════
+//  CAMERA
+// ══════════════════════════════════════════════════
+let stream=null;
+let cameraSelectLocked = false;
+async function populateCameras(){
+  const devices=await navigator.mediaDevices.enumerateDevices();
+  const cameras=devices.filter(d=>d.kind==='videoinput');
+  const sel=document.getElementById('cameraSelect');
+  cameraSelectLocked = true;
+  sel.innerHTML='';
+  cameras.forEach((d,i)=>{
+    const opt=document.createElement('option');
+    opt.value=d.deviceId;
+    opt.textContent=d.label||`Camera ${i+1}`;
+    sel.appendChild(opt);
+  });
+  cameraSelectLocked = false;
+  return cameras;
+}
+async function startCamera(deviceId){
+  if(stream)stream.getTracks().forEach(t=>t.stop());
+  const resSel=document.getElementById('resSelect');
+  const res=resSel?resSel.value:'hd';
+  const resMap={
+    'sd':  {width:640,  height:480},
+    'hd':  {width:1280, height:720},
+    'fhd': {width:1920, height:1080},
+  };
+  const dim=resMap[res]; // undefined for 'native'
+
+  // Build constraints: use ideal (not exact) for resolution so camera can negotiate
+  // deviceId uses exact so we definitely get the right camera
+  let videoConstraints;
+  if(dim){
+    videoConstraints = deviceId
+      ? {deviceId:{exact:deviceId}, width:{min:dim.width,ideal:dim.width}, height:{min:dim.height,ideal:dim.height}}
+      : {width:{min:dim.width,ideal:dim.width}, height:{min:dim.height,ideal:dim.height}};
+  } else {
+    videoConstraints = deviceId ? {deviceId:{exact:deviceId}} : true;
+  }
+
+  try{
+    stream=await navigator.mediaDevices.getUserMedia({video:videoConstraints});
+  }catch(e1){
+    try{
+      const fallback = deviceId
+        ? {deviceId:{exact:deviceId}, width:{ideal:dim?.width}, height:{ideal:dim?.height}}
+        : {width:{ideal:dim?.width}, height:{ideal:dim?.height}};
+      stream=await navigator.mediaDevices.getUserMedia({video:fallback});
+    }catch(e2){
+      try{
+        const last = deviceId?{deviceId:{exact:deviceId}}:true;
+        stream=await navigator.mediaDevices.getUserMedia({video:last});
+      }catch(e3){
+        document.getElementById('camStatus').textContent='No camera';
+        document.getElementById('liveDot').classList.remove('live');
+        return;
+      }
+    }
+  }
+
+  video.srcObject=stream;
+  const track=stream.getVideoTracks()[0];
+
+  // When Chrome's camera picker (or OS) ends the track, restart with whatever
+  // device Chrome has now granted — this is how the browser's own camera UI works.
+  track.onended = () => {
+    // Small delay lets Chrome finish handing over the new device permission
+    setTimeout(() => startCamera(), 300);
+  };
+
+  const s=track.getSettings?track.getSettings():{};
+  const actualW=s.width||'?', actualH=s.height||'?';
+  const match=!dim||(actualW===dim.width&&actualH===dim.height);
+  const resEl=document.getElementById('actualRes');
+  if(resEl){
+    resEl.textContent=`${actualW}×${actualH}`;
+    resEl.style.color=match?'#4f4':'#f90';
+    resEl.title=match?'✓ Resolution matched':`Camera gave ${actualW}×${actualH}, requested ${dim?.width}×${dim?.height}`;
+  }
+  document.getElementById('camStatus').textContent=`${actualW}×${actualH}`;
+  document.getElementById('liveDot').classList.add('live');
+  await populateCameras();
+  // Keep dropdown in sync with active device
+  const activeId=track.getSettings().deviceId;
+  const sel=document.getElementById('cameraSelect');
+  if(activeId)[...sel.options].forEach(o=>{if(o.value===activeId)o.selected=true;});
+  // Initialise focus controls
+  if(typeof initFocusControls==='function') initFocusControls();
+}
+function applyCamTransform(){
+  const t=[];
+  if(state.flipH)t.push('scaleX(-1)');
+  if(state.flipV)t.push('scaleY(-1)');
+  if(state.camRotation)t.push(`rotate(${state.camRotation}deg)`);
+  const transform=t.join(' ')||'none';
+  video.style.transform=transform;
+  // Update live thumb in filmstrip immediately
+  const miniVid=document.querySelector('.thumb-live video');
+  if(miniVid)miniVid.style.transform=transform;
+}
+document.getElementById('cameraSelect').addEventListener('change',e=>{ if(!cameraSelectLocked) startCamera(e.target.value); });
+document.getElementById('resSelect').addEventListener('change',()=>{
+  const sel=document.getElementById('cameraSelect');
+  startCamera(sel.value||undefined);
+});
+document.getElementById('btnFlipH').addEventListener('click',()=>{state.flipH=!state.flipH;applyCamTransform();});
+document.getElementById('btnFlipV').addEventListener('click',()=>{state.flipV=!state.flipV;applyCamTransform();});
+document.getElementById('btnRotateCam').addEventListener('click',()=>{state.camRotation=(state.camRotation+90)%360;applyCamTransform();});
+startCamera();
+
+// When the user switches camera via Chrome's address-bar permission UI,
+// the browser fires devicechange and ends the current track (caught by track.onended above).
+// This listener keeps the dropdown in sync with any newly-visible devices.
+navigator.mediaDevices.addEventListener('devicechange', async () => {
+  await populateCameras();
+  // If our stream is still alive, sync the dropdown to the active device
+  if (stream) {
+    const activeId = stream.getVideoTracks()[0]?.getSettings().deviceId;
+    const sel = document.getElementById('cameraSelect');
+    if (activeId) [...sel.options].forEach(o => { o.selected = o.value === activeId; });
+  }
+});
+
+// ══════════════════════════════════════════════════
+//  SAVE CURRENT FRAME
+//  Bakes drawCanvas + DOM overlays into dataURL.
+//  baseDataURL stays clean for re-editing.
+// ══════════════════════════════════════════════════
+async function saveCurrentFrame(){
+  const i=state.playhead;
+  if(i<0||i>=state.frames.length)return;
+
+  const f=state.frames[i];
+  const baseURL=f.baseDataURL||f.dataURL;
+
+  // Use fetch+createImageBitmap instead of new Image() — ImageBitmap is
+  // explicitly closeable so we release GPU memory immediately after use.
+  async function fetchBitmap(url){
+    const blob=await fetch(url).then(r=>r.blob());
+    return createImageBitmap(blob);
+  }
+
+  const baseBmp=await fetchBitmap(baseURL);
+  const tmpC=document.createElement('canvas');
+  tmpC.width=baseBmp.width; tmpC.height=baseBmp.height;
+  const ctx=tmpC.getContext('2d');
+  ctx.drawImage(baseBmp,0,0);
+  baseBmp.close();
+
+  if(f.drawingDataURL&&f.drawingDataURL.length>100){
+    const inkBmp=await fetchBitmap(f.drawingDataURL);
+    ctx.drawImage(inkBmp,0,0,tmpC.width,tmpC.height);
+    inkBmp.close();
+  }
+
+  const refW=tmpC.width,refH=tmpC.height;
+  for(const ov of(f.overlays||[])){
+    try{
+      const ovBmp=await fetchBitmap(resolveAsset(ov.src));
+      const x=ov.x/100*refW,y=ov.y/100*refH;
+      const iw=ov.w/100*refW,ih=ovBmp.height/ovBmp.width*iw;
+      const rot=(ov.rot||0)*Math.PI/180;
+      ctx.save();ctx.translate(x+iw/2,y+ih/2);ctx.rotate(rot);
+      ctx.drawImage(ovBmp,-iw/2,-ih/2,iw,ih);ctx.restore();
+      ovBmp.close();
+    }catch(_){}
+  }
+  f.dataURL=tmpC.toDataURL('image/jpeg',0.82);
+  f.baseDataURL=baseURL;
+  f.thumbURL=makeThumbnail(tmpC);
+
+  const thumbImg=filmstrip.querySelector(`.thumb[data-idx="${i}"] img`);
+  if(thumbImg)thumbImg.src=f.thumbURL;
+}
+
+// ══════════════════════════════════════════════════
+//  CAPTURE
+// ══════════════════════════════════════════════════
+document.getElementById('btnCapture').addEventListener('click',capture);
+async function capture(){
+  if(!video.videoWidth)return;
+  const w=video.videoWidth,h=video.videoHeight;
+  capCanvas.width=w;capCanvas.height=h;
+
+  // 1. Capture the raw camera frame only (no ink, no overlays baked in)
+  capCtx.save();
+  capCtx.translate(w/2,h/2);
+  if(state.flipH)capCtx.scale(-1,1);
+  if(state.flipV)capCtx.scale(1,-1);
+  if(state.camRotation)capCtx.rotate(state.camRotation*Math.PI/180);
+  capCtx.drawImage(video,-w/2,-h/2);
+  capCtx.restore();
+  const baseDataURL=capCanvas.toDataURL('image/jpeg',0.82);
+  // Generate thumbnail now while capCanvas is still populated.
+  // This is a small JPEG (~5KB) used only for the filmstrip display.
+  const thumbURL=makeThumbnail(capCanvas);
+
+  // 2. Save live ink from drawCanvas (stays editable on the new frame)
+  // 3. Collect overlays only if capturing from live view.
+  //    If the user is reviewing another frame (playhead >= 0), the overlay layer
+  //    contains that frame's overlays — don't carry them onto the new capture.
+  const drawingDataURL = '';
+  const liveOverlays = [];
+  if(state.playhead === -1){
+    overlayLayer.querySelectorAll('.overlay-item').forEach(item=>{
+      liveOverlays.push({
+        src:item.dataset.src,
+        x:+item.dataset.x,
+        y:+item.dataset.y,
+        w:+item.dataset.w,
+        rot:+item.dataset.rot,
+      });
+    });
+  }
+
+  // 4. Clear live display layers
+  clearDisplayLayers();
+
+  // 5. Push new frame
+  state.frames.push({
+    dataURL:null,
+    baseDataURL,
+    thumbURL,
+    drawingDataURL,
+    overlays:liveOverlays,
+  });
+
+  state.playhead=-1;
+  toLive();
+  renderFilmstrip();
+  updateStatus();
+
+  // Immediately bake the composite so the thumbnail shows ink+overlays
+  const newIdx=state.frames.length-1;
+  const savedPlayhead=state.playhead;
+  state.playhead=newIdx;
+  state.dirtyFrame=true;
+  await saveCurrentFrame();
+  state.dirtyFrame=false;
+  state.playhead=savedPlayhead;
+
+  requestAnimationFrame(()=>{filmstrip.scrollLeft=filmstrip.scrollWidth;});
+}
+
+// ══════════════════════════════════════════════════
+//  ONION SKINNING
+// ══════════════════════════════════════════════════
+const onionSlider=document.getElementById('onionOpacity');
+const onionVal   =document.getElementById('onionVal');
+const onionFSel  =document.getElementById('onionFrames');
+const onionFFwd  =document.getElementById('onionForward');
+
+// compositeFrame: decode frame to ImageBitmap (GPU-backed, explicitly closeable).
+// Caller must call .close() on the returned bitmap when done to release GPU memory.
+async function compositeFrame(frameIdx){
+  const f=state.frames[frameIdx];
+  const url=effectiveURL(f);
+  if(!url)return null;
+  const resp=await fetch(url);
+  const blob=await resp.blob();
+  return await createImageBitmap(blob);
+}
+
+let onionRenderGen=0;
+function drawOnion(){
+  if(state.playhead>=0)return;
+  onionCtx.clearRect(0,0,onionCanvas.width,onionCanvas.height);
+  const countBack=parseInt(onionFSel.value);
+  const opacity=parseInt(onionSlider.value)/100;
+  if(opacity===0||!state.frames.length) return;
+  const gen=++onionRenderGen;
+  (async()=>{
+    // Back ghosts (live view: show last N frames)
+    for(let i=countBack;i>=1;i--){
+      const idx=state.frames.length-i;
+      if(idx<0)continue;
+      if(gen!==onionRenderGen)return;
+      const bmp=await compositeFrame(idx);
+      if(gen!==onionRenderGen){if(bmp)bmp.close();return;}
+      if(bmp){
+        onionCtx.globalAlpha=opacity*(countBack-i+1)/Math.max(countBack,1);
+        onionCtx.drawImage(bmp,0,0,onionCanvas.width,onionCanvas.height);
+        onionCtx.globalAlpha=1;
+        bmp.close();
+      }
+    }
+    // No forward ghosts on live view (no future frames to preview)
+  })();
+}
+
+onionSlider.addEventListener('input',()=>{
+  onionVal.textContent=onionSlider.value+'%';
+  if(state.playhead>=0)showFrame(state.playhead);
+  else drawOnion();
+});
+onionFSel.addEventListener('change',()=>{
+  if(state.playhead>=0)showFrame(state.playhead);
+  else drawOnion();
+});
+onionFFwd.addEventListener('change',()=>{
+  if(state.playhead>=0)showFrame(state.playhead);
+  else drawOnion();
+});
+
+// ══════════════════════════════════════════════════
+//  DISPLAY CONTROL
+// ══════════════════════════════════════════════════
+function clearDisplayLayers(){
+  onionCtx.clearRect(0,0,onionCanvas.width,onionCanvas.height);
+  drawCtx.clearRect(0,0,drawCanvas.width,drawCanvas.height);
+  frameImg.style.display='none';
+  frameImg.src='';
+  clearOverlayLayer();
+}
+
+let frameRenderGen=0;
+
+// Layer order (bottom→top):
+//   frameImg     — current frame photo, full opacity
+//   onionCanvas  — ghost frames drawn at reduced opacity ON TRANSPARENT bg, above frameImg
+//   overlayLayer — editable PNG overlays
+//   drawCanvas   — editable ink
+//
+// onionCanvas starts cleared (all transparent). Ghosts are drawn at reduced opacity.
+// Because onionCanvas is above frameImg but its background is transparent,
+// the current frame shows through everywhere no ghost is drawn.
+// Where a ghost IS drawn, it blends over the current frame at the set opacity —
+// this is visible as a faint double-exposure wherever the subject has moved.
+async function showFrame(i){
+  if(i<0||i>=state.frames.length){toLive();return;}
+  video.style.display='none';
+
+  const f=state.frames[i];
+  const countBack=parseInt(onionFSel.value);
+  const countFwd =parseInt(onionFFwd.value);
+  const opacity=parseInt(onionSlider.value)/100;
+  const gen=++frameRenderGen;
+
+  // ── 1. Show current frame on frameImg ──
+  frameImg.src=f.baseDataURL||f.dataURL;
+  frameImg.style.display='block';
+
+  // Clear onion canvas and ink
+  onionCtx.clearRect(0,0,onionCanvas.width,onionCanvas.height);
+  drawCtx.clearRect(0,0,drawCanvas.width,drawCanvas.height);
+  clearOverlayLayer();
+
+  // ── 2. Back ghosts (previous frames) — drawn faintest first ──
+  if(opacity>0 && countBack>0){
+    for(let oi=countBack;oi>=1;oi--){
+      const oidx=i-oi;
+      if(oidx<0)continue;
+      if(gen!==frameRenderGen)return;
+      const bmp=await compositeFrame(oidx);
+      if(gen!==frameRenderGen){if(bmp)bmp.close();return;}
+      if(bmp){
+        onionCtx.globalAlpha=opacity*(countBack-oi+1)/Math.max(countBack,1);
+        onionCtx.drawImage(bmp,0,0,onionCanvas.width,onionCanvas.height);
+        onionCtx.globalAlpha=1;
+        bmp.close();
+      }
+    }
+  }
+
+  // ── 3. Forward ghosts (future frames) — drawn at reduced opacity ──
+  if(opacity>0 && countFwd>0){
+    for(let oi=1;oi<=countFwd;oi++){
+      const oidx=i+oi;
+      if(oidx>=state.frames.length)continue;
+      if(gen!==frameRenderGen)return;
+      const bmp=await compositeFrame(oidx);
+      if(gen!==frameRenderGen){if(bmp)bmp.close();return;}
+      if(bmp){
+        onionCtx.globalAlpha=opacity*(countFwd-oi+1)/Math.max(countFwd,1)*0.7;
+        onionCtx.drawImage(bmp,0,0,onionCanvas.width,onionCanvas.height);
+        onionCtx.globalAlpha=1;
+        bmp.close();
+      }
+    }
+  }
+
+  // ── 4. Restore ink on drawCanvas ──
+  if(gen!==frameRenderGen)return;
+  if(f.drawingDataURL&&f.drawingDataURL.length>100){
+    const blob=await fetch(f.drawingDataURL).then(r=>r.blob());
+    const bmp=await createImageBitmap(blob);
+    if(gen!==frameRenderGen){bmp.close();return;}
+    drawCtx.globalCompositeOperation='source-over';
+    drawCtx.drawImage(bmp,0,0);
+    bmp.close();
+  }
+
+  // ── 5. Restore PNG overlays ──
+  if(gen!==frameRenderGen)return;
+  _restoringOverlays = true;
+  (f.overlays||[]).forEach(ov=>addOverlayFromData(ov));
+  _restoringOverlays = false;
+  updateCopyOverlayButtons();
+
+  document.getElementById('statusFrame').textContent=`Frame ${i+1} / ${state.frames.length}`;
+  document.getElementById('statusMode').textContent='◆ Review';
+  updateCopyOverlayButtons();
+}
+
+function toLive(){
+  frameRenderGen++;
+  video.style.display='';
+  frameImg.style.display='none';
+  frameImg.src='';
+  onionCtx.clearRect(0,0,onionCanvas.width,onionCanvas.height);
+  drawCtx.clearRect(0,0,drawCanvas.width,drawCanvas.height);
+  clearOverlayLayer();
+  drawOnion();
+  document.getElementById('statusFrame').textContent='Frame –';
+  document.getElementById('statusMode').textContent='● Live';
+  if(typeof updateCopyOverlayButtons==='function')updateCopyOverlayButtons();
+}
+
+async function navigateTo(i){
+  const leaving = state.playhead;
+  if(leaving>=0 && leaving<state.frames.length){
+    // Always commit overlay positions and ink string — cheap, no image decoding
+    commitOverlaysToFrame();
+    state.frames[leaving].drawingDataURL = saveInk();
+    // Only bake the composite if something actually changed — this is the
+    // expensive step (decodes 3 images, redraws to canvas, re-encodes JPEG).
+    if(state.dirtyFrame){
+      await saveCurrentFrame();
+      state.dirtyFrame=false;
+    }
+  }
+
+  if(i<0){
+    state.playhead=-1; state.selected.clear(); toLive();
+  }else{
+    state.playhead=i; state.selected.clear(); state.selected.add(i);
+    state.dirtyFrame=false;  // frame starts clean — only set dirty by ink/overlay changes
+    await showFrame(i);
+  }
+  renderFilmstrip();
+  scrollThumbIntoView(i);
+}
+
+// ══════════════════════════════════════════════════
+//  FILMSTRIP
+// ══════════════════════════════════════════════════
+let liveThumbEl=null;
+
+function renderFilmstrip(){
+  // Surgical update — never rebuild from scratch.
+  // Full innerHTML='' would decode all N thumbnails on every call.
+  // Instead: add missing thumbs, remove extras, update changed ones in place.
+
+  const existing=[...filmstrip.querySelectorAll('.thumb[data-idx]')];
+  const liveEl=filmstrip.querySelector('.thumb-live');
+
+  // ── Remove excess thumb elements ──
+  while(existing.length>state.frames.length){
+    existing.pop().remove();
+  }
+
+  // ── Add or update each frame thumb ──
+  state.frames.forEach((f,i)=>{
+    let div=filmstrip.querySelector(`.thumb[data-idx="${i}"]`);
+
+    if(!div){
+      // Create new thumb element
+      div=document.createElement('div');
+      div.dataset.idx=i;
+      const img=document.createElement('img');img.draggable=false;
+      const num=document.createElement('span');num.className='thumb-num';
+      const chk=document.createElement('div');chk.className='thumb-check';
+      chk.innerHTML='<svg viewBox="0 0 10 8"><polyline points="1,4 4,7 9,1" fill="none" stroke="#111" stroke-width="1.5"/></svg>';
+      div.appendChild(img);div.appendChild(num);div.appendChild(chk);
+      div.addEventListener('click',e=>{if(!isDragScrolling)thumbClick(i,e);});
+      makeDraggable(div,i);
+      // Insert before live thumb if it exists, otherwise append
+      if(liveEl) filmstrip.insertBefore(div,liveEl);
+      else filmstrip.appendChild(div);
+    }
+
+    // Update className
+    const cls='thumb'+(state.selected.has(i)?' selected':'')+(state.playhead===i?' active-view':'');
+    if(div.className!==cls) div.className=cls;
+
+    // Update thumbnail src only if changed
+    const img=div.querySelector('img');
+    const wantSrc=f.thumbURL||effectiveURL(f)||'';
+    if(img&&img.src!==wantSrc&&wantSrc) img.src=wantSrc;
+
+    // Update frame number
+    const num=div.querySelector('.thumb-num');
+    if(num&&num.textContent!==String(i+1)) num.textContent=i+1;
+  });
+
+  // ── Ensure live thumb exists and is up to date ──
+  if(!liveEl){
+    const liveDiv=document.createElement('div');
+    liveDiv.className='thumb-live'+(state.playhead===-1?' active-view':'');
+    const miniVid=document.createElement('video');
+    miniVid.autoplay=true;miniVid.muted=true;miniVid.playsInline=true;
+    miniVid.style.cssText='position:absolute;inset:0;width:100%;height:100%;object-fit:cover;';
+    if(stream)miniVid.srcObject=stream;
+    const lbl=document.createElement('div');lbl.className='live-label';lbl.textContent='● LIVE';
+    liveDiv.appendChild(miniVid);liveDiv.appendChild(lbl);
+    liveDiv.addEventListener('click',()=>{if(!isDragScrolling)navigateTo(-1);});
+    filmstrip.appendChild(liveDiv);
+    liveThumbEl=liveDiv;
+  }else{
+    // Update live thumb active state
+    const cls='thumb-live'+(state.playhead===-1?' active-view':'');
+    if(liveEl.className!==cls) liveEl.className=cls;
+    liveThumbEl=liveEl;
+    // Keep mini video stream fresh
+    const mv=liveEl.querySelector('video');
+    if(mv&&stream&&mv.srcObject!==stream) mv.srcObject=stream;
+  }
+
+  // Apply camera transform to mini video
+  const mv=liveThumbEl?.querySelector('video');
+  if(mv){
+    const t=[];
+    if(state.flipH)t.push('scaleX(-1)');
+    if(state.flipV)t.push('scaleY(-1)');
+    if(state.camRotation)t.push(`rotate(${state.camRotation}deg)`);
+    mv.style.transform=t.join(' ')||'none';
+  }
+
+  updateFrameCount();
+}
+
+async function thumbClick(i,e){
+  if(e.shiftKey&&state.selected.size>0){
+    const last=[...state.selected].at(-1);
+    for(let x=Math.min(i,last);x<=Math.max(i,last);x++)state.selected.add(x);
+    await navigateTo(i);
+  }else if(e.ctrlKey||e.metaKey){
+    state.selected.has(i)?state.selected.delete(i):state.selected.add(i);
+    await navigateTo(i);
+  }else{
+    await navigateTo(i);
+  }
+}
+
+function scrollThumbIntoView(i){
+  const thumbs=filmstrip.querySelectorAll('.thumb,.thumb-live');
+  const target=i<0?liveThumbEl:thumbs[i];
+  if(target)target.scrollIntoView({behavior:'smooth',block:'nearest',inline:'center'});
+}
+
+// ── Wheel scroll ──
+filmstrip.addEventListener('wheel',e=>{
+  e.preventDefault();filmstrip.scrollLeft+=e.deltaY||e.deltaX;
+},{passive:false});
+
+// ── Drag-to-scroll (background only) ──
+let isDragScrolling=false,fsStartX=0,fsScrollStart=0,fsMoved=0;
+filmstrip.addEventListener('mousedown',e=>{
+  if(e.target.closest('.thumb,.thumb-live'))return;
+  fsStartX=e.clientX;fsScrollStart=filmstrip.scrollLeft;fsMoved=0;isDragScrolling=false;
+  filmstrip.classList.add('grabbing');
+  const mv=e2=>{fsMoved=Math.abs(e2.clientX-fsStartX);if(fsMoved>4){isDragScrolling=true;filmstrip.scrollLeft=fsScrollStart-(e2.clientX-fsStartX);}};
+  const up=()=>{filmstrip.classList.remove('grabbing');setTimeout(()=>{isDragScrolling=false;},50);document.removeEventListener('mousemove',mv);document.removeEventListener('mouseup',up);};
+  document.addEventListener('mousemove',mv);document.addEventListener('mouseup',up);
+});
+
+document.getElementById('btnSkipFirst').addEventListener('click',()=>{if(state.frames.length)navigateTo(0);filmstrip.scrollLeft=0;});
+document.getElementById('btnSkipLast').addEventListener('click',()=>{navigateTo(-1);filmstrip.scrollLeft=filmstrip.scrollWidth;});
+
+// ══════════════════════════════════════════════════
+//  LONG-PRESS REORDER
+// ══════════════════════════════════════════════════
+const LONG_PRESS_MS=400;
+let reorderSrc=null,reorderDropIdx=null,reorderEl=null;
+
+function makeDraggable(el,idx){
+  let pressX=0,inLongPress=false,longTimer=null,pendingTimer=null;
+  el.addEventListener('mousedown',e=>{
+    if(e.button!==0)return;
+    e.stopPropagation();
+    pressX=e.clientX;inLongPress=false;
+    pendingTimer=setTimeout(()=>el.classList.add('longpress-pending'),150);
+    longTimer=setTimeout(()=>{inLongPress=true;reorderSrc=idx;reorderEl=el;
+      el.classList.remove('longpress-pending');el.classList.add('reorder-active');},LONG_PRESS_MS);
+    const mv=e2=>{
+      if(!inLongPress){if(Math.abs(e2.clientX-pressX)>8){clearTimeout(longTimer);clearTimeout(pendingTimer);el.classList.remove('longpress-pending');document.removeEventListener('mousemove',mv);document.removeEventListener('mouseup',up);}return;}
+      clearDropHighlights();
+      const thumbs=[...filmstrip.querySelectorAll('.thumb')];
+      let target=null,tIdx=-1;
+      for(const t of thumbs){const r=t.getBoundingClientRect();if(e2.clientX>=r.left&&e2.clientX<=r.right){target=t;tIdx=parseInt(t.dataset.idx);break;}}
+      if(target&&tIdx!==idx){reorderDropIdx=tIdx;const r=target.getBoundingClientRect();
+        target.classList.add(e2.clientX<r.left+r.width/2?'drop-before':'drop-after');}
+      else reorderDropIdx=null;
+      // Edge auto-scroll
+      const fsr=filmstrip.getBoundingClientRect();
+      const edge=60;
+      if(e2.clientX<fsr.left+edge)filmstrip.scrollLeft-=(edge-(e2.clientX-fsr.left))*0.3;
+      else if(e2.clientX>fsr.right-edge)filmstrip.scrollLeft+=(edge-(fsr.right-e2.clientX))*0.3;
+    };
+    const up=()=>{
+      clearTimeout(longTimer);clearTimeout(pendingTimer);
+      el.classList.remove('longpress-pending','reorder-active');clearDropHighlights();
+      document.removeEventListener('mousemove',mv);document.removeEventListener('mouseup',up);
+      if(inLongPress&&reorderDropIdx!==null&&reorderDropIdx!==reorderSrc)doReorder(reorderSrc,reorderDropIdx);
+      reorderSrc=null;reorderDropIdx=null;reorderEl=null;inLongPress=false;
+    };
+    document.addEventListener('mousemove',mv);document.addEventListener('mouseup',up);
+  });
+  el.dataset.idx=idx;
+}
+
+function clearDropHighlights(){filmstrip.querySelectorAll('.drop-before,.drop-after').forEach(e=>e.classList.remove('drop-before','drop-after'));}
+
+async function doReorder(from,to){
+  if(state.dirtyFrame){ await saveCurrentFrame(); state.dirtyFrame=false; }
+  const moved=state.frames.splice(from,1)[0];
+  const at=from<to?to-1:to;
+  state.frames.splice(at,0,moved);
+  const ns=new Set();
+  state.selected.forEach(s=>{
+    if(s===from)ns.add(at);
+    else if(s>=Math.min(from,at)&&s<=Math.max(from,at))ns.add(from<at?s-1:s+1);
+    else ns.add(s);
+  });
+  state.selected=ns;
+  if(state.playhead===from)state.playhead=at;
+  else if(state.playhead>=Math.min(from,at)&&state.playhead<=Math.max(from,at))
+    state.playhead=from<at?state.playhead-1:state.playhead+1;
+  renderFilmstrip();drawOnion();
+}
+
+// ══════════════════════════════════════════════════
+//  SELECTION ACTIONS
+// ══════════════════════════════════════════════════
+document.getElementById('btnSelectAll').addEventListener('click',()=>{state.frames.forEach((_,i)=>state.selected.add(i));renderFilmstrip();});
+document.getElementById('btnSelectNone').addEventListener('click',()=>{state.selected.clear();renderFilmstrip();});
+document.getElementById('btnDelete').addEventListener('click',async()=>{
+  if(!state.selected.size)return;
+  state.frames=state.frames.filter((_,i)=>!state.selected.has(i));
+  state.selected.clear();state.playhead=-1;clearDisplayLayers();toLive();renderFilmstrip();drawOnion();
+});
+document.getElementById('btnReverse').addEventListener('click',()=>{
+  if(state.selected.size<2)return;
+  const idx=[...state.selected].sort((a,b)=>a-b);
+  const rev=idx.map(i=>state.frames[i]).reverse();
+  idx.forEach((i,j)=>state.frames[i]=rev[j]);renderFilmstrip();
+});
+document.getElementById('btnDuplicate').addEventListener('click',()=>{
+  if(!state.selected.size)return;
+  const idx=[...state.selected].sort((a,b)=>a-b);
+  const copies=idx.map(i=>JSON.parse(JSON.stringify(state.frames[i])));
+  const at=idx[idx.length-1]+1;
+  state.frames.splice(at,0,...copies);
+  state.selected.clear();copies.forEach((_,i)=>state.selected.add(at+i));renderFilmstrip();
+});
+
+// ══════════════════════════════════════════════════
+//  PLAYBACK
+// ══════════════════════════════════════════════════
+const btnPlay=document.getElementById('btnPlay');
+btnPlay.addEventListener('click',togglePlay);
+document.getElementById('btnFirst').addEventListener('click',()=>{stopPlay();if(state.frames.length)navigateTo(0);});
+document.getElementById('btnLast').addEventListener('click',()=>{stopPlay();navigateTo(-1);});
+
+function togglePlay(){state.playing?stopPlay():startPlay();}
+
+function startPlay(){
+  if(!state.frames.length)return;
+  state.playing=true;btnPlay.textContent='⏸';
+  let i=state.playhead>=0?state.playhead:0;
+  const fps=parseInt(document.getElementById('fpsInput').value)||12;
+
+  // Prepare display for playback — clear all review layers
+  video.style.display='none';
+  frameImg.style.display='';
+  onionCtx.clearRect(0,0,onionCanvas.width,onionCanvas.height);
+  drawCtx.clearRect(0,0,drawCanvas.width,drawCanvas.height);
+  clearOverlayLayer();
+
+  // Track active thumb highlight cheaply — no full re-render
+  let lastHighlightIdx=-1;
+  function updateHighlight(idx){
+    if(idx===lastHighlightIdx)return;
+    if(lastHighlightIdx>=0){
+      filmstrip.querySelector(`.thumb[data-idx="${lastHighlightIdx}"]`)?.classList.remove('active-view');
+    }
+    filmstrip.querySelector(`.thumb[data-idx="${idx}"]`)?.classList.add('active-view');
+    lastHighlightIdx=idx;
+  }
+
+  state.playInterval=setInterval(()=>{
+    state.playhead=i;
+    frameImg.src=effectiveURL(state.frames[i]);
+    updateHighlight(i);
+    i=(i+1)%state.frames.length;
+  },1000/fps);
+}
+
+function stopPlay(){
+  if(!state.playing)return;
+  state.playing=false;btnPlay.textContent='▶';
+  clearInterval(state.playInterval);state.playInterval=null;
+  if(state.playhead>=0){state.playhead=-1;toLive();renderFilmstrip();}
+}
+
+function haltPlay(){
+  if(!state.playing)return;
+  state.playing=false;btnPlay.textContent='▶';
+  clearInterval(state.playInterval);state.playInterval=null;
+}
+
+document.addEventListener('keydown',e=>{
+  if(e.target.tagName==='INPUT'||e.target.tagName==='SELECT')return;
+  if(e.code==='Space'){
+    e.preventDefault();
+    if(state.playhead===-1) capture(); else togglePlay();
+    return;
+  }
+  if(e.code==='ArrowRight'){
+    e.preventDefault();haltPlay();if(!state.frames.length)return;
+    if(state.playhead===-1)return;
+    const next=state.playhead+1;
+    if(next>=state.frames.length)navigateTo(-1);else navigateTo(next);return;
+  }
+  if(e.code==='ArrowLeft'){
+    e.preventDefault();haltPlay();if(!state.frames.length)return;
+    if(state.playhead===-1)navigateTo(state.frames.length-1);
+    else if(state.playhead>0)navigateTo(state.playhead-1);return;
+  }
+  if(e.code==='Escape'){stopPlay();return;}
+  if(e.code==='Delete'||e.code==='Backspace')document.getElementById('btnDelete').click();
+});
+
+// ══════════════════════════════════════════════════
+//  DRAW MODE — pen/eraser buttons activate draw directly
+// ══════════════════════════════════════════════════
+let drawTool='none'; // 'none' | 'pen' | 'eraser'
+
+function setDrawTool(tool){
+  drawTool=tool;
+  state.drawMode=(tool!=='none');
+  document.body.classList.toggle('drawMode', state.drawMode);
+  document.body.classList.toggle('eraserMode', tool==='eraser');
+  document.getElementById('btnDrawPen').classList.toggle('active', tool==='pen');
+  document.getElementById('btnDrawEraser').classList.toggle('active', tool==='eraser');
+}
+
+document.getElementById('btnDrawPen').addEventListener('click',()=>{
+  // Clicking active tool deactivates; clicking inactive activates
+  setDrawTool(drawTool==='pen' ? 'none' : 'pen');
+});
+document.getElementById('btnDrawEraser').addEventListener('click',()=>{
+  setDrawTool(drawTool==='eraser' ? 'none' : 'eraser');
+});
+document.getElementById('btnClearDraw').addEventListener('click',()=>drawCtx.clearRect(0,0,drawCanvas.width,drawCanvas.height));
+document.getElementById('btnUndoDraw').addEventListener('click',()=>{
+  if(!state.drawHistory.length)return;
+  loadImage(state.drawHistory.pop()).then(img=>{drawCtx.clearRect(0,0,drawCanvas.width,drawCanvas.height);drawCtx.drawImage(img,0,0);});
+});
+
+// Auto-deactivate draw when clicking outside camera AND outside draw controls
+document.addEventListener('mousedown',e=>{
+  if(!state.drawMode)return;
+  const inCamera=document.getElementById('cameraWrap').contains(e.target);
+  const inDrawPanel=e.target.closest('.left-panel');
+  if(!inCamera&&!inDrawPanel)setDrawTool('none');
+});
+
+let drawing=false,lastX=0,lastY=0;
+function getDrawPos(e){
+  const r=drawCanvas.getBoundingClientRect();
+  return[(e.clientX-r.left)*(drawCanvas.width/r.width),(e.clientY-r.top)*(drawCanvas.height/r.height)];
+}
+function applyStroke(x1,y1,x2,y2,dot){
+  const size=parseInt(document.getElementById('brushSize').value);
+  const isErase=drawTool==='eraser';
+  drawCtx.globalCompositeOperation=isErase?'destination-out':'source-over';
+  const col=isErase?'rgba(0,0,0,1)':document.getElementById('brushColor').value;
+  drawCtx.strokeStyle=col;drawCtx.fillStyle=col;
+  drawCtx.lineWidth=size;drawCtx.lineCap='round';drawCtx.lineJoin='round';
+  if(dot){drawCtx.beginPath();drawCtx.arc(x1,y1,size/2,0,Math.PI*2);drawCtx.fill();}
+  else{drawCtx.beginPath();drawCtx.moveTo(x1,y1);drawCtx.lineTo(x2,y2);drawCtx.stroke();}
+  drawCtx.globalCompositeOperation='source-over';
+}
+drawCanvas.addEventListener('mousedown',e=>{
+  if(!state.drawMode)return;e.preventDefault();drawing=true;
+  state.drawHistory.push(saveInk());
+  if(state.drawHistory.length>10)state.drawHistory.shift();
+  [lastX,lastY]=getDrawPos(e);applyStroke(lastX,lastY,lastX,lastY,true);
+});
+drawCanvas.addEventListener('mousemove',e=>{
+  if(!drawing||!state.drawMode)return;e.preventDefault();
+  const[x,y]=getDrawPos(e);applyStroke(lastX,lastY,x,y,false);[lastX,lastY]=[x,y];
+});
+let thumbUpdatePending=false;
+function scheduleThumbUpdate(){
+  if(thumbUpdatePending)return;
+  thumbUpdatePending=true;
+  state.dirtyFrame=true;  // ink or overlay changed — frame needs rebaking
+  const targetIdx=state.playhead;
+  requestAnimationFrame(async()=>{
+    thumbUpdatePending=false;
+    // Abort if we've navigated away from this frame
+    if(state.playhead!==targetIdx||targetIdx<0||targetIdx>=state.frames.length)return;
+    commitOverlaysToFrame();
+    state.frames[targetIdx].drawingDataURL=saveInk();
+    await saveCurrentFrame();
+    state.dirtyFrame=false;
+  });
+}
+
+drawCanvas.addEventListener('mouseup',()=>{
+  drawing=false;
+  if(state.drawMode)scheduleThumbUpdate();
+});
+drawCanvas.addEventListener('mouseleave',()=>{
+  drawing=false;
+  if(state.drawMode)scheduleThumbUpdate();
+});
+
+// ══════════════════════════════════════════════════
+//  PNG OVERLAYS
+// ══════════════════════════════════════════════════
+document.getElementById('btnAddPng').addEventListener('click',()=>document.getElementById('pngOverlayInput').click());
+document.getElementById('pngOverlayInput').addEventListener('change',e=>{
+  const file=e.target.files[0];if(!file)return;
+  const reader=new FileReader();
+  reader.onload=ev=>{
+    const assetId = registerAsset(ev.target.result);
+    addOverlayFromData({src:assetId,x:10,y:10,w:30,rot:0});
+  };
+  reader.readAsDataURL(file);e.target.value='';
+});
+
+function clearOverlayLayer(){overlayLayer.innerHTML='';}
+function redrawAllOverlays(){overlayLayer.querySelectorAll('.overlay-item').forEach(item=>applyOverlayPos(item));}
+
+function commitOverlaysToFrame(){
+  const i=state.playhead;if(i<0||i>=state.frames.length)return;
+  state.frames[i].overlays=[];
+  overlayLayer.querySelectorAll('.overlay-item').forEach(item=>{
+    state.frames[i].overlays.push({src:item.dataset.src,x:+item.dataset.x,y:+item.dataset.y,w:+item.dataset.w,rot:+item.dataset.rot});
+  });
+  // Note: do NOT trigger scheduleThumbUpdate here — callers do that explicitly
+}
+
+function applyOverlayPos(item){
+  const lw=viewLayer.clientWidth,lh=viewLayer.clientHeight;
+  item.style.left=(+item.dataset.x/100*lw)+'px';
+  item.style.top=(+item.dataset.y/100*lh)+'px';
+  item.style.width=(+item.dataset.w/100*lw)+'px';
+  item.style.transform=`rotate(${+item.dataset.rot}deg)`;
+}
+
+let _restoringOverlays = false; // true while showFrame is restoring overlays — suppresses side effects
+
+function addOverlayFromData(ov){
+  const item=document.createElement('div');
+  item.className='overlay-item';
+  item.dataset.src=ov.src;item.dataset.x=ov.x;item.dataset.y=ov.y;item.dataset.w=ov.w;item.dataset.rot=ov.rot||0;
+  const img=document.createElement('img');img.src=resolveAsset(ov.src);img.draggable=false;
+  const rotH=document.createElement('div');rotH.className='ov-rotate';rotH.title='Drag to rotate';
+  const resH=document.createElement('div');resH.className='ov-resize';
+  const delB=document.createElement('button');delB.className='ov-delete';delB.textContent='✕';
+  delB.title='Delete overlay';
+  const cpNxt=document.createElement('button');cpNxt.className='ov-copy-next';cpNxt.textContent='→';
+  cpNxt.title='Copy this overlay to next frame';
+  const cpAll=document.createElement('button');cpAll.className='ov-copy-all';cpAll.textContent='⇥';
+  cpAll.title='Copy this overlay to all frames';
+  item.appendChild(rotH);item.appendChild(img);item.appendChild(resH);item.appendChild(delB);
+  item.appendChild(cpNxt);item.appendChild(cpAll);
+  overlayLayer.appendChild(item);
+  applyOverlayPos(item);
+  overlayLayer.style.pointerEvents='all';
+
+  img.addEventListener('mousedown',e=>{
+    e.stopPropagation();activateOverlay(item);
+    const lw=viewLayer.clientWidth,lh=viewLayer.clientHeight;
+    const ox=e.clientX,oy=e.clientY,sx=+item.dataset.x,sy=+item.dataset.y;
+    const mv=e2=>{item.dataset.x=sx+(e2.clientX-ox)/lw*100;item.dataset.y=sy+(e2.clientY-oy)/lh*100;applyOverlayPos(item);};
+    const up=()=>{
+      document.removeEventListener('mousemove',mv);document.removeEventListener('mouseup',up);
+      commitOverlaysToFrame();scheduleThumbUpdate();
+    };
+    document.addEventListener('mousemove',mv);document.addEventListener('mouseup',up);
+  });
+  resH.addEventListener('mousedown',e=>{
+    e.stopPropagation();
+    const lw=viewLayer.clientWidth,sx=e.clientX,sw=+item.dataset.w;
+    const mv=e2=>{item.dataset.w=Math.max(5,sw+(e2.clientX-sx)/lw*100);applyOverlayPos(item);};
+    const up=()=>{
+      document.removeEventListener('mousemove',mv);document.removeEventListener('mouseup',up);
+      commitOverlaysToFrame();scheduleThumbUpdate();
+    };
+    document.addEventListener('mousemove',mv);document.addEventListener('mouseup',up);
+  });
+  rotH.addEventListener('mousedown',e=>{
+    e.stopPropagation();
+    const ir=item.getBoundingClientRect();
+    const cx=ir.left+ir.width/2,cy=ir.top+ir.height/2;
+    const startAngle=Math.atan2(e.clientY-cy,e.clientX-cx)*180/Math.PI;
+    const startRot=+item.dataset.rot;
+    const mv=e2=>{
+      const r2=item.getBoundingClientRect();
+      const a=Math.atan2(e2.clientY-(r2.top+r2.height/2),e2.clientX-(r2.left+r2.width/2))*180/Math.PI;
+      item.dataset.rot=((startRot+(a-startAngle))%360+360)%360;applyOverlayPos(item);
+    };
+    const up=()=>{
+      document.removeEventListener('mousemove',mv);document.removeEventListener('mouseup',up);
+      commitOverlaysToFrame();scheduleThumbUpdate();
+    };
+    document.addEventListener('mousemove',mv);document.addEventListener('mouseup',up);
+  });
+  delB.addEventListener('mousedown',e=>e.stopPropagation());
+  delB.addEventListener('click',e=>{
+    e.stopPropagation();item.remove();
+    commitOverlaysToFrame();
+    scheduleThumbUpdate();
+    updateCopyOverlayButtons();
+  });
+
+  // Copy this single overlay to the next frame (adds, does not replace)
+  cpNxt.addEventListener('mousedown',e=>e.stopPropagation());
+  cpNxt.addEventListener('click',async e=>{
+    e.stopPropagation();
+    const src=state.playhead;
+    const nextIdx=src+1;
+    if(src<0||nextIdx>=state.frames.length)return;
+    commitOverlaysToFrame();
+    const ovData={src:item.dataset.src,x:+item.dataset.x,y:+item.dataset.y,w:+item.dataset.w,rot:+item.dataset.rot};
+    state.frames[nextIdx].overlays=[...state.frames[nextIdx].overlays,{...ovData}];
+    const savedPlayhead=state.playhead;
+    state.playhead=nextIdx;
+    await saveCurrentFrame();
+    state.playhead=savedPlayhead;
+    renderFilmstrip();
+  });
+
+  // Copy this single overlay to all other frames (adds, does not replace)
+  cpAll.addEventListener('mousedown',e=>e.stopPropagation());
+  cpAll.addEventListener('click',async e=>{
+    e.stopPropagation();
+    const src=state.playhead;
+    if(src<0)return;
+    commitOverlaysToFrame();
+    const ovData={src:item.dataset.src,x:+item.dataset.x,y:+item.dataset.y,w:+item.dataset.w,rot:+item.dataset.rot};
+    const savedPlayhead=state.playhead;
+    for(let i=0;i<state.frames.length;i++){
+      if(i===src)continue;
+      state.frames[i].overlays=[...state.frames[i].overlays,{...ovData}];
+      state.playhead=i;
+      await saveCurrentFrame();
+    }
+    state.playhead=savedPlayhead;
+    renderFilmstrip();
+  });
+  document.addEventListener('mousedown',e=>{if(!item.contains(e.target))item.classList.remove('active');},true);
+
+  // Trigger thumb update immediately when overlay is first added by the user.
+  // Suppressed during showFrame restoration to avoid partial-commit race.
+  if(!_restoringOverlays){
+    commitOverlaysToFrame();
+    scheduleThumbUpdate();
+    updateCopyOverlayButtons();
+  }
+}
+function activateOverlay(item){overlayLayer.querySelectorAll('.overlay-item').forEach(i=>i.classList.remove('active'));item.classList.add('active');}
+
+// ══════════════════════════════════════════════════
+//  SAVE / LOAD PROJECT
+// ══════════════════════════════════════════════════
+document.getElementById('btnSaveProject').addEventListener('click',async()=>{
+  const saveBtn=document.getElementById('btnSaveProject');
+  if(saveBtn.disabled)return;
+  saveBtn.disabled=true;
+  try{
+  const i=state.playhead;
+  if(i>=0&&i<state.frames.length){
+    commitOverlaysToFrame();
+    state.frames[i].drawingDataURL=saveInk();
+  }
+  await saveCurrentFrame();
+  const name=document.getElementById('projectName').value.trim()||'Untitled';
+  const now=new Date();
+  const dateStr=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-'+String(now.getDate()).padStart(2,'0');
+  const timeStr=String(now.getHours()).padStart(2,'0')+String(now.getMinutes()).padStart(2,'0')+String(now.getSeconds()).padStart(2,'0');
+  const filename=`${name}_${dateStr}_${timeStr}.smz`.replace(/[^a-zA-Z0-9_\-\.]/g,'_');
+
+  // Strip the data:mime;base64, prefix and decode to binary
+  function dataURLtoBytes(dataURL){
+    const b64=dataURL.split(',')[1];
+    const bin=atob(b64);
+    const arr=new Uint8Array(bin.length);
+    for(let j=0;j<bin.length;j++) arr[j]=bin.charCodeAt(j);
+    return arr;
+  }
+
+  const zip=new JSZip();
+
+  // Build manifest — small JSON, no base64 blobs
+  const manifest={
+    version:6, name,
+    fps:parseInt(document.getElementById('fpsInput').value),
+    frames:state.frames.map((f,fi)=>{
+      const pad=String(fi+1).padStart(4,'0');
+      const hasBase=f.dataURL&&f.baseDataURL&&f.dataURL!==f.baseDataURL;
+      const hasInk=f.drawingDataURL&&f.drawingDataURL.length>100;
+      return {
+        photo:`frames/frame_${pad}.jpg`,
+        thumb:`frames/frame_${pad}_thumb.jpg`,
+        base:hasBase?`frames/frame_${pad}_base.jpg`:null,
+        ink:hasInk?`frames/frame_${pad}_ink.webp`:null,
+        overlays:(f.overlays||[]).map(ov=>({...ov})),
+      };
+    }),
+    assets:Object.keys(overlayAssets),
+  };
+  zip.file('project.json', JSON.stringify(manifest,null,2));
+
+  setSaveProgress(0, 'Collecting frames…');
+  await new Promise(r=>setTimeout(r,0)); // yield so banner renders
+
+  // Write frame files as real binary
+  for(let fi=0;fi<state.frames.length;fi++){
+    const f=state.frames[fi];
+    const pad=String(fi+1).padStart(4,'0');
+    const photoURL=effectiveURL(f);
+    if(photoURL) zip.file(`frames/frame_${pad}.jpg`, dataURLtoBytes(photoURL));
+    if(f.thumbURL) zip.file(`frames/frame_${pad}_thumb.jpg`, dataURLtoBytes(f.thumbURL));
+    if(f.dataURL&&f.baseDataURL&&f.dataURL!==f.baseDataURL)
+      zip.file(`frames/frame_${pad}_base.jpg`, dataURLtoBytes(f.baseDataURL));
+    if(f.drawingDataURL&&f.drawingDataURL.length>100)
+      zip.file(`frames/frame_${pad}_ink.webp`, dataURLtoBytes(f.drawingDataURL));
+    if(fi%20===0){
+      setSaveProgress(fi/state.frames.length*60, `Collecting frame ${fi+1} of ${state.frames.length}…`);
+      await new Promise(r=>setTimeout(r,0));
+    }
+  }
+
+  // Write shared overlay assets — always .png (file picker only accepts PNG)
+  for(const [id,dataURL] of Object.entries(overlayAssets)){
+    zip.file(`assets/${id}.png`, dataURLtoBytes(dataURL));
+  }
+
+  setSaveProgress(60, 'Compressing…');
+  await new Promise(r=>setTimeout(r,0));
+
+  const blob=await zip.generateAsync(
+    {type:'blob',compression:'DEFLATE',compressionOptions:{level:6}},
+    m=>setSaveProgress(60+m.percent*0.4,`Compressing… ${Math.round(m.percent)}%`)
+  );
+  setSaveProgress(100,'Done!');
+  triggerDownload(blob,filename);
+  setTimeout(()=>setSaveProgress(null),1500);
+  }catch(err){
+    setSaveProgress(null);
+    alert('Save failed: '+err.message);
+  }finally{
+    saveBtn.disabled=false;
+  }
+});
+
+document.getElementById('btnLoadProject').addEventListener('click',()=>document.getElementById('loadInput').click());
+document.getElementById('loadInput').addEventListener('change',async e=>{
+  const file=e.target.files[0]; if(!file) return; e.target.value='';
+  try{
+    // Legacy .fbf JSON format
+    if(file.name.endsWith('.fbf')){
+      const text=await file.text();
+      _loadLegacy(JSON.parse(text));
+      return;
+    }
+    // New .smz ZIP format
+    const zip=await JSZip.loadAsync(await file.arrayBuffer());
+    const p=JSON.parse(await zip.file('project.json').async('string'));
+
+    // Restore shared overlay assets
+    for(const id of (p.assets||[])){
+      const entry=zip.file(`assets/${id}.png`);
+      if(entry){
+        const blob=await entry.async('blob');
+        overlayAssets[id]=await new Promise(res=>{
+          const r=new FileReader(); r.onload=ev=>res(ev.target.result); r.readAsDataURL(blob);
+        });
+        const n=parseInt(id.replace('oa',''));
+        if(n>_assetCounter) _assetCounter=n;
+      }
+    }
+
+    // Restore frames
+    async function readDataURL(entry, mime){
+      if(!entry) return null;
+      const blob=await entry.async('blob');
+      return new Promise(res=>{const r=new FileReader();r.onload=ev=>res(ev.target.result);r.readAsDataURL(blob);});
+    }
+
+    const frames=[];
+    for(let fi=0;fi<p.frames.length;fi++){
+      const fm=p.frames[fi];
+      const photoURL=await readDataURL(zip.file(fm.photo),'image/jpeg');
+      const baseURL=fm.base ? await readDataURL(zip.file(fm.base),'image/jpeg') : photoURL;
+      const inkURL=fm.ink ? await readDataURL(zip.file(fm.ink),'image/webp') : '';
+      // Restore stored thumbnail; if absent (older .smz), generate from photo
+      let thumbURL=fm.thumb ? await readDataURL(zip.file(fm.thumb),'image/jpeg') : null;
+      if(!thumbURL && photoURL){
+        const img=await loadImage(photoURL);
+        thumbURL=makeThumbnail(img);
+      }
+      frames.push({dataURL:photoURL, baseDataURL:baseURL, thumbURL, drawingDataURL:inkURL, overlays:fm.overlays||[]});
+    }
+
+    if(p.name) document.getElementById('projectName').value=p.name;
+    document.getElementById('fpsInput').value=p.fps||12;
+    state.frames=frames;
+    state.selected.clear(); clearDisplayLayers(); state.playhead=-1;
+    toLive(); renderFilmstrip(); drawOnion();
+
+  }catch(err){
+    console.error('Load failed:',err);
+    alert('Could not load project: '+err.message);
+  }
+});
+
+function _loadLegacy(p){
+  if(p.name) document.getElementById('projectName').value=p.name;
+  if(p.overlayAssets){
+    Object.assign(overlayAssets,p.overlayAssets);
+    for(const id of Object.keys(p.overlayAssets)){
+      const n=parseInt(id.replace('oa',''));
+      if(n>_assetCounter) _assetCounter=n;
+    }
+  }
+  state.frames=(p.frames||[]).map(f=>({drawingDataURL:'',overlays:[],...f,baseDataURL:f.baseDataURL||f.dataURL}));
+  document.getElementById('fpsInput').value=p.fps||12;
+  state.selected.clear(); clearDisplayLayers(); state.playhead=-1;
+  toLive(); renderFilmstrip(); drawOnion();
+}
+
+// ══════════════════════════════════════════════════
+//  EXPORT
+// ══════════════════════════════════════════════════
+document.querySelectorAll('.fmt-opt').forEach(label=>{
+  label.addEventListener('click',()=>{
+    document.querySelectorAll('.fmt-opt').forEach(l=>l.classList.remove('selected'));
+    label.classList.add('selected');label.querySelector('input').checked=true;
+    document.getElementById('mp4Warning').style.display=label.dataset.fmt==='mp4'?'block':'none';
+    updateExportDuration();
+  });
+});
+function selectedFormat(){return document.querySelector('input[name="fmt"]:checked')?.value||'webm';}
+function updateExportDuration(){
+  const fps=parseInt(document.getElementById('exportFps').value)||12;
+  document.getElementById('exportDuration').textContent=
+    state.frames.length?`${state.frames.length} frames · ${(state.frames.length/fps).toFixed(1)}s`:'No frames';
+}
+document.getElementById('exportFps').addEventListener('input',updateExportDuration);
+document.getElementById('btnExport').addEventListener('click',()=>{
+  document.getElementById('exportFps').value=document.getElementById('fpsInput').value;
+  updateExportDuration();document.getElementById('exportProgressWrap').style.display='none';
+  setExportProgress(0,'Ready');document.getElementById('exportModal').classList.add('open');
+});
+document.getElementById('btnExportCancel').addEventListener('click',()=>document.getElementById('exportModal').classList.remove('open'));
+function getExportBasename(){
+  const name=(document.getElementById('projectName').value.trim()||'Untitled').replace(/[^a-zA-Z0-9_\-]/g,'_');
+  const now=new Date();
+  const d=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-'+String(now.getDate()).padStart(2,'0');
+  const t=String(now.getHours()).padStart(2,'0')+String(now.getMinutes()).padStart(2,'0')+String(now.getSeconds()).padStart(2,'0');
+  return `${name}_${d}_${t}`;
+}
+
+document.getElementById('btnExportGo').addEventListener('click',async()=>{
+  if(!state.frames.length){setExportProgress(0,'No frames.');return;}
+  document.getElementById('exportProgressWrap').style.display='block';
+  document.getElementById('btnExportGo').disabled=true;document.getElementById('btnExportCancel').disabled=true;
+  const base=getExportBasename();
+  try{
+    const fmt=selectedFormat();
+    if(fmt==='webm')await exportWebM('video/webm',`${base}.webm`);
+    else if(fmt==='mp4') await exportWebM('video/mp4', `${base}.mp4`);
+    else if(fmt==='gif') await exportGIF(`${base}.gif`);
+    else if(fmt==='zip') await exportZip(`${base}.zip`);
+    setExportProgress(100,'Done! Downloading…');
+    setTimeout(()=>{document.getElementById('exportModal').classList.remove('open');document.getElementById('exportProgressWrap').style.display='none';},1800);
+  }catch(err){setExportProgress(0,'⚠ '+err.message);}
+  document.getElementById('btnExportGo').disabled=false;document.getElementById('btnExportCancel').disabled=false;
+});
+function setSaveProgress(pct, msg){
+  const banner=document.getElementById('saveProgressBanner');
+  const bar=document.getElementById('saveProgressBar');
+  const txt=document.getElementById('saveProgressText');
+  const pctEl=document.getElementById('saveProgressPct');
+  if(pct===null){banner.style.display='none';return;}
+  banner.style.display='block';
+  bar.style.width=Math.round(pct)+'%';
+  txt.textContent=msg||'Saving…';
+  pctEl.textContent=Math.round(pct)+'%';
+}
+function setExportProgress(pct,msg){
+  document.getElementById('exportProgressBar').style.width=pct+'%';
+  document.getElementById('exportPct').textContent=Math.round(pct)+'%';
+  if(msg)document.getElementById('exportStatusText').textContent=msg;
+}
+async function exportWebM(mimeType,filename){
+  const fps=parseInt(document.getElementById('exportFps').value)||12;
+  const first=await loadImage(effectiveURL(state.frames[0]));
+  const off=document.createElement('canvas');off.width=first.naturalWidth;off.height=first.naturalHeight;
+  const ctx=off.getContext('2d');
+  const mime=MediaRecorder.isTypeSupported(mimeType)?mimeType:'video/webm';
+  const chunks=[];const rec=new MediaRecorder(off.captureStream(fps),{mimeType:mime});
+  rec.ondataavailable=e=>{if(e.data.size)chunks.push(e.data);};
+  const done=new Promise(res=>rec.onstop=()=>{triggerDownload(new Blob(chunks,{type:mime}),filename);res();});
+  rec.start();
+  for(let i=0;i<state.frames.length;i++){
+    const img=await loadImage(effectiveURL(state.frames[i]));ctx.drawImage(img,0,0);
+    setExportProgress((i+1)/state.frames.length*90,`Frame ${i+1} / ${state.frames.length}`);
+    await sleep(1000/fps);
+  }
+  rec.stop();await done;
+}
+async function exportGIF(filename='animation.gif'){
+  const fps=parseInt(document.getElementById('exportFps').value)||12;
+  const delay=Math.round(100/fps);
+  if(!state.frames.length)throw new Error('No frames');
+  const first=await loadImage(effectiveURL(state.frames[0]));
+  const W=first.naturalWidth, H=first.naturalHeight;
+
+  const MAX_GIF_W=480;
+  let gW=W, gH=H;
+  if(W>MAX_GIF_W){ gW=MAX_GIF_W; gH=Math.round(H*MAX_GIF_W/W); }
+  if(gW!==W) setExportProgress(0,`Scaling to ${gW}×${gH} for GIF…`);
+
+  const off=document.createElement('canvas');off.width=gW;off.height=gH;
+  const ctx=off.getContext('2d',{willReadFrequently:true});
+  const frameData=[];
+
+  for(let i=0;i<state.frames.length;i++){
+    let pixels;
+    try{
+      const img=await loadImage(effectiveURL(state.frames[i]));
+      ctx.clearRect(0,0,gW,gH);ctx.drawImage(img,0,0,gW,gH);
+      pixels=ctx.getImageData(0,0,gW,gH).data;
+    }catch(_){
+      const resp=await fetch(effectiveURL(state.frames[i]));
+      const bmp=await createImageBitmap(await resp.blob());
+      ctx.clearRect(0,0,gW,gH);ctx.drawImage(bmp,0,0,gW,gH);bmp.close();
+      pixels=ctx.getImageData(0,0,gW,gH).data;
+    }
+
+    const rgb=new Uint8Array(gW*gH*3);
+    for(let p=0;p<gW*gH;p++){
+      rgb[p*3  ]=pixels[p*4  ];
+      rgb[p*3+1]=pixels[p*4+1];
+      rgb[p*3+2]=pixels[p*4+2];
+    }
+    frameData.push(rgb);
+    setExportProgress((i+1)/state.frames.length*50,`Reading frame ${i+1} of ${state.frames.length}`);
+  }
+
+  // Run encode on the main thread. Chrome blocks blob: workers when the page
+  // is served from file://, so a Worker silently fails. Running inline avoids
+  // that entirely and works in both file:// and served contexts.
+  setExportProgress(50, 'Building palette…');
+  await new Promise(r => setTimeout(r, 0)); // yield so progress renders
+
+  const nq  = new NeuQuant(frameData[0], 256);
+  const cmap = nq.colormap();
+
+  const buf = [0x47,0x49,0x46,0x38,0x39,0x61];
+  buf.push(gW&0xff, gW>>8, gH&0xff, gH>>8, 0xf7, 0, 0);
+  for (let i = 0; i < 256; i++) buf.push(cmap[i*3], cmap[i*3+1], cmap[i*3+2]);
+  buf.push(0x21,0xff,0x0b);
+  for (const c of 'NETSCAPE2.0') buf.push(c.charCodeAt(0));
+  buf.push(3,1,0,0,0);
+
+  for (let fi = 0; fi < frameData.length; fi++) {
+    const rgb = frameData[fi];
+    const indexed = new Uint8Array(gW * gH);
+    for (let p = 0; p < gW * gH; p++)
+      indexed[p] = nq.map(rgb[p*3], rgb[p*3+1], rgb[p*3+2]);
+    new GifWriter(buf).addFrame(0, 0, gW, gH, indexed, delay);
+    setExportProgress(50 + (fi+1)/frameData.length*48,
+      `Encoding GIF… frame ${fi+1} of ${frameData.length}`);
+    await new Promise(r => setTimeout(r, 0)); // yield between frames
+  }
+
+  buf.push(0x3b);
+  const blob = new Blob([new Uint8Array(buf)], {type:'image/gif'});
+  triggerDownload(blob, filename);
+  document.getElementById('btnExportCancel').onclick = null;
+}
+
+async function exportZip(filename='frames.zip'){
+  const zip=new JSZip();const folder=zip.folder('frames');
+  for(let i=0;i<state.frames.length;i++){
+    folder.file(`frame_${String(i+1).padStart(4,'0')}.jpg`,state.frames[i].dataURL.split(',')[1],{base64:true});
+    setExportProgress((i+1)/state.frames.length*80,`Packing frame ${i+1}`);
+  }
+  setExportProgress(85,'Compressing…');
+  const blob=await zip.generateAsync({type:'blob',compression:'DEFLATE',compressionOptions:{level:6}},
+    m=>setExportProgress(85+m.percent*.14,`Compressing… ${Math.round(m.percent)}%`));
+  triggerDownload(blob,filename);
+}
+
+// ══ STATUS ══
+function calcMemStats(){
+  let photoBytes=0, baseBytes=0, inkBytes=0, thumbBytes=0, assetBytes=0;
+  state.frames.forEach(f=>{
+    photoBytes += (effectiveURL(f)||'').length;
+    if(f.dataURL && f.baseDataURL) baseBytes += (f.baseDataURL||'').length;
+    inkBytes   += (f.drawingDataURL||'').length;
+    thumbBytes += (f.thumbURL||'').length;
+  });
+  Object.values(overlayAssets).forEach(src=>assetBytes+=(src||'').length);
+  const toMB = b => (b * 0.75 / 1024 / 1024).toFixed(1);
+  const total = photoBytes + baseBytes + inkBytes + thumbBytes + assetBytes;
+  return {photoBytes,baseBytes,inkBytes,thumbBytes,assetBytes,total,toMB};
+}
+
+function updateStatus(){
+  const fps=parseInt(document.getElementById('fpsInput').value)||12;
+  document.getElementById('statusDuration').textContent=(state.frames.length/fps).toFixed(1)+'s';
+  const {total,toMB}=calcMemStats();
+  const mb=toMB(total);
+  document.getElementById('memEstimate').textContent=mb+' MB';
+  const warn=parseFloat(mb)>200;
+  document.getElementById('memWarning').style.display=warn?'':'none';
+}
+
+function toggleMemDiag(){
+  const el=document.getElementById('memDiag');
+  const showing=el.style.display!=='none';
+  el.style.display=showing?'none':'block';
+  if(!showing) updateMemDiag();
+}
+
+function updateMemDiag(){
+  const diag=document.getElementById('memDiag');
+  if(diag.style.display==='none') return;
+  const {photoBytes,baseBytes,inkBytes,thumbBytes,assetBytes,total,toMB}=calcMemStats();
+  const frames=state.frames.length;
+
+  // ── Canvas backing stores (width × height × 4 bytes RGBA, uncompressed) ──
+  const canvases=[
+    {name:'Capture canvas', el:document.getElementById('captureCanvas')},
+    {name:'Draw (ink) canvas', el:drawCanvas},
+    {name:'Onion skin canvas', el:onionCanvas},
+  ];
+  let canvasBytes=0;
+  const canvasRows=canvases.map(({name,el})=>{
+    if(!el)return'';
+    const b=el.width*el.height*4;
+    canvasBytes+=b;
+    return `<tr><td style="padding:2px 4px;padding-left:12px;color:#888">${name}</td><td style="text-align:right">${toMB(b)} MB</td><td style="text-align:right;color:#888">${el.width}×${el.height}</td></tr>`;
+  }).join('');
+
+  // frameImg decoded bitmap — if it has a src, browser has decoded it
+  const frameImgEl=document.getElementById('frameImg');
+  let frameImgBytes=0;
+  if(frameImgEl&&frameImgEl.naturalWidth){
+    frameImgBytes=frameImgEl.naturalWidth*frameImgEl.naturalHeight*4;
+    canvasBytes+=frameImgBytes;
+  }
+
+  // Filmstrip thumbnails — each decoded to their natural size
+  const thumbImgs=filmstrip.querySelectorAll('.thumb img');
+  let thumbDecoded=0;
+  thumbImgs.forEach(img=>{if(img.naturalWidth)thumbDecoded+=img.naturalWidth*img.naturalHeight*4;});
+  canvasBytes+=thumbDecoded;
+
+  // ── JS heap ──
+  const heap=window.performance?.memory;
+  const heapUsed=heap?heap.usedJSHeapSize:0;
+  const heapTotal=heap?heap.totalJSHeapSize:0;
+  const heapLimit=heap?heap.jsHeapSizeLimit:0;
+
+  // ── Build table ──
+  let html=`<table style="width:100%;border-collapse:collapse;">
+    <tr style="border-bottom:1px solid #333"><th style="text-align:left;padding:2px 4px">Category</th><th style="text-align:right;padding:2px 4px">Size</th><th style="text-align:right;padding:2px 4px">Detail</th></tr>
+    <tr style="color:#aaa"><td colspan="3" style="padding:3px 4px 1px;font-size:10px;text-transform:uppercase;letter-spacing:1px">String storage (JS heap)</td></tr>
+    <tr><td style="padding:2px 4px">📸 Photos</td><td style="text-align:right">${toMB(photoBytes)} MB</td><td style="text-align:right;color:#888">${frames} frames</td></tr>
+    ${baseBytes?`<tr><td style="padding:2px 4px">📸 Base photos</td><td style="text-align:right">${toMB(baseBytes)} MB</td><td style="text-align:right;color:#888">composited</td></tr>`:''}
+    <tr><td style="padding:2px 4px">✏️ Ink (WebP)</td><td style="text-align:right">${toMB(inkBytes)} MB</td><td style="text-align:right;color:#888">${toMB(inkBytes/frames||0)} MB avg</td></tr>
+    <tr><td style="padding:2px 4px">🔲 Thumbnails</td><td style="text-align:right">${toMB(thumbBytes)} MB</td><td style="text-align:right;color:#888">${toMB(thumbBytes/frames||0)} MB avg</td></tr>
+    <tr><td style="padding:2px 4px">🖼 PNG assets</td><td style="text-align:right">${toMB(assetBytes)} MB</td><td style="text-align:right;color:#888">${Object.keys(overlayAssets).length} file(s)</td></tr>
+    <tr style="border-top:1px solid #222"><td style="padding:2px 4px;color:#888">Subtotal (strings)</td><td style="text-align:right;color:#888">${toMB(total)} MB</td><td></td></tr>
+
+    <tr style="color:#aaa"><td colspan="3" style="padding:6px 4px 1px;font-size:10px;text-transform:uppercase;letter-spacing:1px">Decoded bitmaps (renderer)</td></tr>
+    ${canvasRows}
+    ${frameImgBytes?`<tr><td style="padding:2px 4px;padding-left:12px;color:#888">frameImg (current frame)</td><td style="text-align:right">${toMB(frameImgBytes)} MB</td><td style="text-align:right;color:#888">${frameImgEl.naturalWidth}×${frameImgEl.naturalHeight}</td></tr>`:''}
+    <tr><td style="padding:2px 4px;padding-left:12px;color:#888">Filmstrip thumbs (${thumbImgs.length})</td><td style="text-align:right">${toMB(thumbDecoded)} MB</td><td style="text-align:right;color:#888">decoded</td></tr>
+    <tr style="border-top:1px solid #222"><td style="padding:2px 4px;color:#888">Subtotal (bitmaps)</td><td style="text-align:right;color:#888">${toMB(canvasBytes)} MB</td><td></td></tr>`;
+
+  if(heap){
+    const pct=(heapUsed/heapLimit*100).toFixed(0);
+    const colour=pct>70?'var(--danger)':pct>40?'var(--warn,#fa0)':'var(--accent)';
+    html+=`
+    <tr style="color:#aaa"><td colspan="3" style="padding:6px 4px 1px;font-size:10px;text-transform:uppercase;letter-spacing:1px">Chrome JS heap</td></tr>
+    <tr><td style="padding:2px 4px">Used / Allocated</td><td style="text-align:right">${(heapUsed/1024/1024).toFixed(1)} MB</td><td style="text-align:right;color:#888">of ${(heapTotal/1024/1024).toFixed(1)} MB</td></tr>
+    <tr><td style="padding:2px 4px">Heap limit</td><td style="text-align:right">${(heapLimit/1024/1024).toFixed(0)} MB</td><td></td></tr>
+    <tr><td colspan="3" style="padding:3px 4px">
+      <div style="background:#222;border-radius:3px;height:6px;overflow:hidden">
+        <div style="height:100%;background:${colour};width:${pct}%;transition:width 0.5s"></div>
+      </div>
+    </td></tr>`;
+  } else {
+    html+=`<tr><td colspan="3" style="padding:4px;color:#666">JS heap: Chrome only (performance.memory)</td></tr>`;
+  }
+
+  const grandTotal=total*0.75+canvasBytes+(heapUsed||0);
+  html+=`<tr style="border-top:1px solid #333;font-weight:bold"><td style="padding:4px 4px 2px">Est. total tab memory</td><td style="text-align:right">${(grandTotal/1024/1024).toFixed(0)} MB</td><td></td></tr>`;
+  html+=`</table>`;
+
+  document.getElementById('memDiagContent').innerHTML=html;
+}
+
+// Auto-refresh diagnostic while open
+setInterval(updateMemDiag, 2000);
+function updateFrameCount(){
+  document.getElementById('frameCount').textContent=`${state.frames.length} frame${state.frames.length!==1?'s':''}`;
+  document.getElementById('selCount').textContent=state.selected.size>0?`· ${state.selected.size} selected`:'';
+  updateStatus();
+}
+document.getElementById('fpsInput').addEventListener('change',()=>{
+  updateStatus();if(state.playing){stopPlay();startPlay();}
+});
+
+// ══ INIT ══
+renderFilmstrip();updateStatus();fitViewLayer();
+
+// ══════════════════════════════════════════════════
+//  COPY OVERLAYS TO NEXT / ALL FRAMES
+// ══════════════════════════════════════════════════
+
+function updateCopyOverlayButtons(){
+  const hasOverlays = overlayLayer.querySelectorAll('.overlay-item').length > 0;
+  const onRealFrame = state.playhead >= 0 && state.playhead < state.frames.length;
+  const enabled = hasOverlays && onRealFrame;
+  document.getElementById('btnCopyOverlayNext').disabled = !enabled;
+  document.getElementById('btnCopyOverlayAll').disabled  = !enabled;
+}
+
+document.getElementById('btnCopyOverlayNext').addEventListener('click', async()=>{
+  if(state.playhead < 0) return;
+  // Save current frame first to capture latest overlay state
+  await saveCurrentFrame();
+  const src = state.frames[state.playhead];
+  const nextIdx = state.playhead + 1;
+  if(nextIdx >= state.frames.length) return;
+  // Deep-copy overlays into next frame (merge — keep existing overlays of next frame too)
+  const copies = src.overlays.map(ov=>({...ov}));
+  state.frames[nextIdx].overlays = [...state.frames[nextIdx].overlays, ...copies];
+  // Rebake next frame thumbnail
+  const savedPlayhead = state.playhead;
+  state.playhead = nextIdx;
+  await saveCurrentFrame();
+  state.playhead = savedPlayhead;
+  renderFilmstrip();
+});
+
+document.getElementById('btnCopyOverlayAll').addEventListener('click', async()=>{
+  if(state.playhead < 0) return;
+  await saveCurrentFrame();
+  const src = state.frames[state.playhead];
+  const copies = src.overlays.map(ov=>({...ov}));
+  const savedPlayhead = state.playhead;
+  for(let i = 0; i < state.frames.length; i++){
+    if(i === state.playhead) continue;
+    state.frames[i].overlays = [...state.frames[i].overlays, ...copies];
+    state.playhead = i;
+    await saveCurrentFrame();
+  }
+  state.playhead = savedPlayhead;
+  renderFilmstrip();
+});
+
+// ══════════════════════════════════════════════════
+//  FOCUS CONTROLS
+//  Uses ImageCapture API where supported.
+//  Falls back to a simple refocus button (single-shot → continuous).
+// ══════════════════════════════════════════════════
+
+let imageCapture = null;
+
+async function initFocusControls(){
+  imageCapture = null;
+  document.getElementById('focusControls').style.display = 'none';
+  document.getElementById('btnRefocusFallback').style.display = 'none';
+
+  if(!stream) return;
+  const track = stream.getVideoTracks()[0];
+  if(!track) return;
+
+  // ImageCapture API
+  if(typeof ImageCapture === 'undefined') {
+    // Not supported — show just the fallback refocus button
+    document.getElementById('btnRefocusFallback').style.display = '';
+    return;
+  }
+
+  try {
+    imageCapture = new ImageCapture(track);
+    const caps = track.getCapabilities ? track.getCapabilities() : {};
+
+    if(caps.focusMode && caps.focusMode.length > 1){
+      // Full focus control available
+      document.getElementById('focusControls').style.display = 'flex';
+
+      // Focus distance slider
+      const hasDistance = caps.focusDistance;
+      const sliderRow = document.getElementById('focusSliderRow');
+      if(hasDistance){
+        const slider = document.getElementById('focusSlider');
+        slider.min   = caps.focusDistance.min;
+        slider.max   = caps.focusDistance.max;
+        slider.step  = caps.focusDistance.step || 0.01;
+        const settings = track.getSettings ? track.getSettings() : {};
+        slider.value = settings.focusDistance ?? caps.focusDistance.min;
+      }
+
+      // Auto checkbox
+      const chk = document.getElementById('chkAutoFocus');
+      chk.checked = true;
+      sliderRow.style.display = 'none';
+
+      chk.addEventListener('change', async()=>{
+        const mode = chk.checked ? 'continuous' : 'manual';
+        sliderRow.style.display = (!chk.checked && hasDistance) ? 'flex' : 'none';
+        try { await track.applyConstraints({advanced:[{focusMode: mode}]}); } catch(_){}
+      });
+
+      if(hasDistance){
+        document.getElementById('focusSlider').addEventListener('input', async(e)=>{
+          try { await track.applyConstraints({advanced:[{focusDistance: +e.target.value}]}); } catch(_){}
+        });
+      }
+
+    } else {
+      // focusMode not controllable — just show refocus fallback
+      document.getElementById('btnRefocusFallback').style.display = '';
+    }
+  } catch(_){
+    document.getElementById('btnRefocusFallback').style.display = '';
+  }
+}
+
+// Refocus fallback: grab a frame via ImageCapture which forces autofocus on some cameras
+document.getElementById('btnRefocusFallback').addEventListener('click', async()=>{
+  if(!stream) return;
+  const track = stream.getVideoTracks()[0];
+  try {
+    if(typeof ImageCapture !== 'undefined'){
+      const ic = new ImageCapture(track);
+      await ic.grabFrame(); // triggers AF on many cameras
+    } else {
+      // Last resort: briefly toggle the track
+      await track.applyConstraints({advanced:[{focusMode:'single-shot'}]});
+      setTimeout(()=>track.applyConstraints({advanced:[{focusMode:'continuous'}]}).catch(()=>{}), 600);
+    }
+  } catch(_){}
+});
+
+// ══════════════════════════════════════════════════
+//  MOBILE SUPPORT
+// ══════════════════════════════════════════════════
+
+// ── Unified pointer position (mouse or touch) ──
+function getEventPos(e){
+  const src = e.touches ? e.touches[0] : (e.changedTouches ? e.changedTouches[0] : e);
+  return { clientX: src.clientX, clientY: src.clientY };
+}
+
+// ── Touch drawing ──
+function getDrawPosByClient(clientX, clientY){
+  const r = drawCanvas.getBoundingClientRect();
+  return [
+    (clientX - r.left) * (drawCanvas.width  / r.width),
+    (clientY - r.top)  * (drawCanvas.height / r.height),
+  ];
+}
+
+drawCanvas.addEventListener('touchstart', e=>{
+  if(!state.drawMode) return;
+  e.preventDefault();
+  drawing = true;
+  state.drawHistory.push(saveInk());
+  if(state.drawHistory.length > 10) state.drawHistory.shift();
+  const {clientX,clientY} = getEventPos(e);
+  [lastX,lastY] = getDrawPosByClient(clientX,clientY);
+  applyStroke(lastX,lastY,lastX,lastY,true);
+}, {passive:false});
+
+drawCanvas.addEventListener('touchmove', e=>{
+  if(!drawing || !state.drawMode) return;
+  e.preventDefault();
+  const {clientX,clientY} = getEventPos(e);
+  const [x,y] = getDrawPosByClient(clientX,clientY);
+  applyStroke(lastX,lastY,x,y,false);
+  [lastX,lastY] = [x,y];
+}, {passive:false});
+
+drawCanvas.addEventListener('touchend', ()=>{
+  drawing = false;
+  if(state.drawMode) scheduleThumbUpdate();
+});
+
+// ── Touch for overlay: move, resize, rotate ──
+function addTouchDrag(el, onStart, onMove, onEnd){
+  el.addEventListener('touchstart', e=>{
+    e.preventDefault(); e.stopPropagation();
+    const p = getEventPos(e);
+    const state = onStart(p);
+    const mv = e2=>{ e2.preventDefault(); onMove(getEventPos(e2), state); };
+    const up = ()=>{ document.removeEventListener('touchmove',mv); document.removeEventListener('touchend',up); onEnd && onEnd(); };
+    document.addEventListener('touchmove', mv, {passive:false});
+    document.addEventListener('touchend', up);
+  }, {passive:false});
+}
+
+// Patch addOverlayFromData to also attach touch handlers.
+// We do this by wrapping the function.
+const _addOverlayFromData_orig = addOverlayFromData;
+// (Touch handlers are injected into addOverlayFromData below via monkey-patch)
+// Instead, we add a post-processing step after overlays are added:
+function attachOverlayTouchHandlers(item){
+  const img  = item.querySelector('img');
+  const resH = item.querySelector('.ov-resize');
+  const rotH = item.querySelector('.ov-rotate');
+
+  // Touch move
+  addTouchDrag(img,
+    p=>{ activateOverlay(item); return {ox:p.clientX,oy:p.clientY,sx:+item.dataset.x,sy:+item.dataset.y,lw:viewLayer.clientWidth,lh:viewLayer.clientHeight}; },
+    (p,s)=>{ item.dataset.x=s.sx+(p.clientX-s.ox)/s.lw*100; item.dataset.y=s.sy+(p.clientY-s.oy)/s.lh*100; applyOverlayPos(item); },
+    ()=>{ commitOverlaysToFrame(); scheduleThumbUpdate(); }
+  );
+
+  // Touch resize
+  addTouchDrag(resH,
+    p=>({ sx:p.clientX, sw:+item.dataset.w, lw:viewLayer.clientWidth }),
+    (p,s)=>{ item.dataset.w=Math.max(5,s.sw+(p.clientX-s.sx)/s.lw*100); applyOverlayPos(item); },
+    ()=>{ commitOverlaysToFrame(); scheduleThumbUpdate(); }
+  );
+
+  // Touch rotate
+  addTouchDrag(rotH,
+    p=>{
+      const ir=item.getBoundingClientRect();
+      return { cx:ir.left+ir.width/2, cy:ir.top+ir.height/2,
+               startAngle:Math.atan2(p.clientY-(ir.top+ir.height/2),p.clientX-(ir.left+ir.width/2))*180/Math.PI,
+               startRot:+item.dataset.rot };
+    },
+    (p,s)=>{
+      const r2=item.getBoundingClientRect();
+      const a=Math.atan2(p.clientY-(r2.top+r2.height/2),p.clientX-(r2.left+r2.width/2))*180/Math.PI;
+      item.dataset.rot=((s.startRot+(a-s.startAngle))%360+360)%360;
+      applyOverlayPos(item);
+    },
+    ()=>{ commitOverlaysToFrame(); scheduleThumbUpdate(); }
+  );
+}
+
+// Hook into addOverlayFromData to attach touch handlers after DOM build
+const _origAddOverlay = addOverlayFromData;
+window.addOverlayFromData = function(ov){
+  _origAddOverlay(ov);
+  const items = overlayLayer.querySelectorAll('.overlay-item');
+  if(items.length) attachOverlayTouchHandlers(items[items.length-1]);
+};
+// Reattach on existing overlays when showFrame restores them
+const _origShowFrame = showFrame;
+// (showFrame already calls addOverlayFromData which is now wrapped)
+
+// ── Filmstrip touch scroll ──
+filmstrip.addEventListener('touchstart', e=>{
+  if(e.target.closest('.thumb,.thumb-live')) return;
+  const startX = e.touches[0].clientX;
+  const startScroll = filmstrip.scrollLeft;
+  const mv = e2=>{
+    filmstrip.scrollLeft = startScroll - (e2.touches[0].clientX - startX);
+  };
+  const up = ()=>{ document.removeEventListener('touchmove',mv); document.removeEventListener('touchend',up); };
+  document.addEventListener('touchmove', mv, {passive:true});
+  document.addEventListener('touchend', up);
+}, {passive:true});
+
+// ── Long-press reorder — touch ──
+function addTouchLongPress(el, idx){
+  let longTimer=null, pendingTimer=null, inLongPress=false, startX=0;
+  el.addEventListener('touchstart', e=>{
+    e.stopPropagation();
+    startX = e.touches[0].clientX;
+    inLongPress = false;
+    pendingTimer = setTimeout(()=>el.classList.add('longpress-pending'), 150);
+    longTimer = setTimeout(()=>{
+      inLongPress=true; reorderSrc=idx; reorderEl=el;
+      el.classList.remove('longpress-pending'); el.classList.add('reorder-active');
+      if(navigator.vibrate) navigator.vibrate(40); // haptic feedback
+    }, 500);
+
+    const mv = e2=>{
+      const cx = e2.touches[0].clientX;
+      if(!inLongPress){
+        if(Math.abs(cx-startX)>10){ clearTimeout(longTimer); clearTimeout(pendingTimer); el.classList.remove('longpress-pending'); cleanup(); return; }
+        return;
+      }
+      clearDropHighlights();
+      const thumbs=[...filmstrip.querySelectorAll('.thumb')];
+      let target=null,tIdx=-1;
+      for(const t of thumbs){ const r=t.getBoundingClientRect(); if(cx>=r.left&&cx<=r.right){target=t;tIdx=parseInt(t.dataset.idx);break;} }
+      if(target&&tIdx!==idx){ reorderDropIdx=tIdx; const r=target.getBoundingClientRect(); target.classList.add(cx<r.left+r.width/2?'drop-before':'drop-after'); }
+      else reorderDropIdx=null;
+      const fsr=filmstrip.getBoundingClientRect(), edge=60;
+      if(cx<fsr.left+edge) filmstrip.scrollLeft-=(edge-(cx-fsr.left))*0.3;
+      else if(cx>fsr.right-edge) filmstrip.scrollLeft+=(edge-(fsr.right-cx))*0.3;
+    };
+    const up = ()=>{
+      clearTimeout(longTimer); clearTimeout(pendingTimer);
+      el.classList.remove('longpress-pending','reorder-active'); clearDropHighlights();
+      if(inLongPress&&reorderDropIdx!==null&&reorderDropIdx!==reorderSrc) doReorder(reorderSrc,reorderDropIdx);
+      reorderSrc=null; reorderDropIdx=null; reorderEl=null; inLongPress=false;
+      cleanup();
+    };
+    function cleanup(){ document.removeEventListener('touchmove',mv); document.removeEventListener('touchend',up); }
+    document.addEventListener('touchmove', mv, {passive:true});
+    document.addEventListener('touchend', up);
+  }, {passive:true});
+}
+
+// Patch makeDraggable to also add touch long-press
+const _origMakeDraggable = makeDraggable;
+window.makeDraggable = function(el, idx){
+  _origMakeDraggable(el, idx);
+  addTouchLongPress(el, idx);
+};
+
+// ── Cycle camera button ──
+document.getElementById('btnFacingMode').addEventListener('click', async ()=>{
+  const cameras = await populateCameras();
+  if(cameras.length < 2) return;
+  const sel = document.getElementById('cameraSelect');
+  const currentId = stream?.getVideoTracks()[0]?.getSettings().deviceId || '';
+  const currentIdx = [...sel.options].findIndex(o => o.value === currentId);
+  const nextIdx = (currentIdx + 1) % sel.options.length;
+  sel.selectedIndex = nextIdx;
+  startCamera(sel.options[nextIdx].value);
+});
+
+// ── Mobile drawer toggle ──
+function toggleDrawer(side){
+  const leftPanel  = document.querySelector('.left-panel');
+  const rightPanel = document.querySelector('.tool-panel');
+  const panel = side==='left' ? leftPanel : rightPanel;
+  const other = side==='left' ? rightPanel : leftPanel;
+
+  const isOpen = panel.classList.contains('open');
+  other.classList.remove('open');
+  panel.classList.toggle('open', !isOpen);
+
+  // Update tab active states
+  document.getElementById('tabTools').classList.toggle('tab-active', !isOpen && side==='left');
+  document.getElementById('tabFrames').classList.toggle('tab-active', !isOpen && side==='right');
+}
+
+// Close drawer on outside tap
+document.addEventListener('touchstart', e=>{
+  if(!e.target.closest('.left-panel,.tool-panel,#mobileTabBar')){
+    document.querySelector('.left-panel').classList.remove('open');
+    document.querySelector('.tool-panel').classList.remove('open');
+    document.getElementById('tabTools').classList.remove('tab-active');
+    document.getElementById('tabFrames').classList.remove('tab-active');
+  }
+}, {passive:true});
+
+// Tab: Onion opens the cam-toolbar onion controls on mobile
+document.getElementById('tabOnion').addEventListener('click',()=>{
+  // On mobile the onion control is hidden in cam-toolbar — show a quick inline sheet
+  const tb = document.querySelector('.cam-toolbar');
+  tb.style.display = tb.style.display==='none' ? '' : '';
+  const oc = document.querySelector('.onion-control');
+  const fp = document.querySelector('.fps-control');
+  if(oc) oc.style.display = oc.style.display==='flex'?'none':'flex';
+  if(fp) fp.style.display = fp.style.display==='flex'?'none':'flex';
+  document.getElementById('tabOnion').classList.toggle('tab-active');
+});
+
+// Tab: Settings toggles the right panel camera section
+document.getElementById('tabSettings').addEventListener('click',()=>{
+  toggleDrawer('right');
+});
+
+// ── iOS Safari detection — show warning in export modal ──
+const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+  (navigator.platform==='MacIntel' && navigator.maxTouchPoints>1);
+if(isIOS){
+  document.getElementById('iosWarning').style.display='block';
+}
+
+// ── Auto-deactivate draw on touchstart outside camera (mobile) ──
+document.addEventListener('touchstart', e=>{
+  if(!state.drawMode) return;
+  const inCamera = document.getElementById('cameraWrap').contains(e.target);
+  const inDrawPanel = e.target.closest('.left-panel');
+  if(!inCamera && !inDrawPanel) setDrawTool('none');
+}, {passive:true});
+
+</script>
+</body>
+</html>
