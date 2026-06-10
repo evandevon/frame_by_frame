@@ -120,7 +120,7 @@ https://evandevon.github.io/frame_by_frame/
 - Press **Stop** to return to the live view.
 
 ### Saving your work
-- Click **Save** to download a `.smz` project file containing all frames, ink, masks, and overlays.
+- Click **Save** to download a `.smz` project file (just a renamed .zip) containing all frames, ink, masks, and overlays.
 - Click **Load** to reopen a saved project.
 
 ### Exporting
