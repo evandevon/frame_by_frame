@@ -19,6 +19,7 @@ https://evandevon.github.io/frame_by_frame/
 - Flip and rotate the camera view
 - Manual focus or autofocus on supported webcams (via ImageCapture API)
 - Exposure controls on supported cameras
+- Denoise over multiple frames to reduce image noise
 
 ### Frames
 - Capture with the on-screen button or the Space key or user selected hotkeys
@@ -50,19 +51,24 @@ https://evandevon.github.io/frame_by_frame/
 - Cut-out tool: draw a freehand lasso or polygon selection on a frame, then cut it out as a moveable overlay
 
 ### Masking
-- Requires a clean plate (background image grabbed from the camera or uploaded)
+- Requires a background image grabbed from the camera or uploaded
 - Manual erase/restore brush with adjustable size and softness
-- Rectangle erase tool — drag to erase a rectangular region; Invert toggle erases everything outside the rectangle instead
+- Rectangle, polygon, freehand erase tool — make a shape to erase or keep a region
 - Undo and redo for mask strokes
 - View mask mode — shows the raw black-and-white mask for inspection
 - Reset mask for the current frame; Clear all masks across all frames
-- Chroma key with the following controls:
+- Chroma keying with the following controls:
   - Key colour picker with RGB or HSV matching mode
   - Tolerance and Softness (feather)
   - Pedestal — lifts semi-transparent grey areas toward fully opaque
   - Choke — shrinks the matte edge inward to remove colour fringing
   - Spill suppression strength — reduces key-colour bleed on subject edges
   - Replace or Add-to mode — choose whether chroma key replaces the existing manual mask or multiplies with it
+  - Apply to current frame (live preview on slider change) or Apply to all frames
+- Difference keying with the following controls
+  - Using camera to take a 'cleanplate' frame for a comparison
+  - Upload 'cleanplate' frame for a comparison
+  - Threshold, Softness, Choke, Clean, Contrast
   - Apply to current frame (live preview on slider change) or Apply to all frames
 
 ### Playback
@@ -82,6 +88,7 @@ https://evandevon.github.io/frame_by_frame/
 ### Save / Load
 - Save and load projects as .smz files (a ZIP containing all frames, ink layers, masks, and overlay assets)
 - Project name stamped into the filename with date and time
+- Project automatically saves a backup to indexDB and asks to reload it upone reloading the page
 
 ### Other
 - Brightness and contrast adjustment per frame (non-destructive)
@@ -118,6 +125,7 @@ https://evandevon.github.io/frame_by_frame/
 ### Playback
 - Press **Play** to preview your animation.
 - Press **Stop** to return to the live view.
+- Press the yello **Play** button to only play the currently selected frames
 
 ### Saving your work
 - Click **Save** to download a `.smz` project file (just a renamed .zip) containing all frames, ink, masks, and overlays.
